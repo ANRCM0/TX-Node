@@ -375,13 +375,15 @@ WARN [core] audit: report_all=false — only rule-matched targets are reported;
 
 ## 配套面板插件（AccessAudit）
 
-`panel-plugin/AccessAudit/` 是 Xboard 面板侧的审计插件（v2.1）：接收节点上报、名单匹配、阈值自动封禁、TG 告警、分节点查看、节点级异常通报（上报中断/命中突增）。
+AccessAudit 是**可选的面板插件**，其唯一源码位于 TXBoard：
 
-- 源码直接在本仓库 `panel-plugin/AccessAudit/`，发布时 CI 自动打包 `AccessAudit-plugin.zip`（Release 附件）
-- 安装：zip 上传到 Xboard 后台插件管理（或放 `plugins/` 目录）→ 启用 → 管理页 `/plugin/access-audit`
-- xray 内核节点用的旁路 agent 也在插件包内（`node-agent/audit-agent.py`）
+- 插件源码：[PaiMonCai/TXBoard → integrations/AccessAudit](https://github.com/PaiMonCai/TXBoard/tree/main/integrations/AccessAudit)
+- TX-Node 只保留可选的审计 reporter/client，用于拉取规则和上报事件。
+- TX-Node 不再 vendor、构建或随 Release 打包面板插件。
+- 面板未安装/启用 AccessAudit 时，请保持 `audit.enabled: false`；核心节点、流量与状态上报不受影响。
+- xray 兼容所需的旁路 `audit-agent.py` 作为插件资产由 TXBoard 的 AccessAudit 插件维护。
 
-详细文档见插件包内 `README.md`。
+这样插件生命周期属于控制平面，TX-Node 的发布生命周期只负责 Agent/runtime。
 
 ## Xboard 兼容与项目来源
 

@@ -146,10 +146,6 @@ jobs:
         with:
           merge-multiple: true
           path: dist
-      - name: Package AccessAudit panel plugin
-        run: |
-          cd panel-plugin
-          zip -r "$GITHUB_WORKSPACE/dist/AccessAudit-plugin.zip" AccessAudit
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
@@ -162,4 +158,3 @@ jobs:
             dist/xboard-node-linux-arm64
             dist/xbctl-linux-amd64
             dist/xbctl-linux-arm64
-            dist/AccessAudit-plugin.zip
