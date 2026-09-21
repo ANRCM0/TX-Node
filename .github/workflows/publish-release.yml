@@ -70,7 +70,7 @@ jobs:
 
       # Tag pushes created by GITHUB_TOKEN do not recursively start workflows.
       # Explicitly dispatch the existing ci.yml at the tag so the repository's
-      # normal binary/Docker/plugin packaging remains the single build path.
+      # normal binary/Docker packaging remains the single build path.
       - name: Dispatch existing release CI
         if: steps.state.outputs.release_exists != 'true'
         env:
