@@ -198,6 +198,72 @@ func TestApplyUserDeltaAddPreparesLimiterBeforeKernelUpdate(t *testing.T) {
 	}
 }
 
+func TestApplyUserUpdateStartsKernelWhenFirstUserArrives(t *testing.T) {
+	k := &fakeKernel{running: false}
+	s := newTestService(k)
+	s.lastConfig = &model.NodeSpec{Protocol: "vless"}
+	s.updateUserState([]model.UserSpec{}, srcBootstrap)
+
+	users := []model.UserSpec{{ID: 1, UUID: "uuid-first", SpeedLimit: 8}}
+	s.applyUserUpdate(context.Background(), users, computeUserHash(users), srcWSFull)
+
+	if got := k.startCalls; got != 1 {
+		t.Fatalf("Start call count = %d, want 1", got)
+	}
+	if got := k.updateCalls; got != 0 {
+		t.Fatalf("UpdateUsers call count = %d, want 0 for initial kernel start", got)
+	}
+	if !k.running {
+		t.Fatal("expected kernel to be running after first user arrives")
+	}
+	if len(s.lastUsers) != 1 || s.lastUsers[0].UUID != "uuid-first" {
+		t.Fatalf("lastUsers = %#v, want first user", s.lastUsers)
+	}
+	if s.speedTracker.GetLimiter("uuid-first") == nil {
+		t.Fatal("expected limiter for first user before kernel start")
+	}
+}
+
+func TestApplyUserDeltaStartsKernelWhenFirstUserArrives(t *testing.T) {
+	k := &fakeKernel{running: false}
+	s := newTestService(k)
+	s.lastConfig = &model.NodeSpec{Protocol: "vless"}
+	s.updateUserState([]model.UserSpec{}, srcBootstrap)
+
+	delta := []model.UserSpec{{ID: 1, UUID: "uuid-first", SpeedLimit: 8}}
+	s.applyUserDelta(context.Background(), "add", delta)
+
+	if got := k.startCalls; got != 1 {
+		t.Fatalf("Start call count = %d, want 1", got)
+	}
+	if got := k.addCalls; got != 0 {
+		t.Fatalf("AddUsers call count = %d, want 0 for initial kernel start", got)
+	}
+	if !k.running {
+		t.Fatal("expected kernel to be running after first user delta")
+	}
+	if len(s.lastUsers) != 1 || s.lastUsers[0].UUID != "uuid-first" {
+		t.Fatalf("lastUsers = %#v, want first user", s.lastUsers)
+	}
+}
+
+func TestApplyUserDeltaRemoveUpdatesStoppedServiceState(t *testing.T) {
+	k := &fakeKernel{running: false}
+	s := newTestService(k)
+	s.lastConfig = &model.NodeSpec{Protocol: "vless"}
+	users := []model.UserSpec{{ID: 1, UUID: "uuid-old"}, {ID: 2, UUID: "uuid-keep"}}
+	s.updateUserState(users, srcBootstrap)
+
+	s.applyUserDelta(context.Background(), "remove", []model.UserSpec{{ID: 1}})
+
+	if got := k.removeCalls; got != 0 {
+		t.Fatalf("RemoveUsers call count = %d, want 0 while kernel is stopped", got)
+	}
+	if len(s.lastUsers) != 1 || s.lastUsers[0].ID != 2 {
+		t.Fatalf("lastUsers = %#v, want only user 2", s.lastUsers)
+	}
+}
+
 func TestValidateNodeRuntimeRejectsUnsupportedDNSProvider(t *testing.T) {
 	cfg := &config.Config{Kernel: config.KernelConfig{Type: "singbox"}}
 	err := validateNodeRuntime(cfg, []string{"http"}, &model.NodeSpec{

@@ -245,12 +245,14 @@ func (s *Service) Run(ctx context.Context) error {
 			s.reportDevices()
 
 		case <-pullTicker.C:
-			// When WebSocket is connected, skip REST polling entirely.
-			// Config/user updates arrive via WS push.
+			// WebSocket provides low-latency updates, while periodic REST polling
+			// provides eventual consistency if a push event is missed. Panel API
+			// ETags keep this reconciliation cheap when nothing changed.
 			if s.wsClient != nil && s.wsClient.IsConnected() {
-				continue
+				nlog.Core().Debug("reconciling from API (ws connected)")
+			} else {
+				nlog.Core().Debug("polling from API (ws not connected)")
 			}
-			nlog.Core().Debug("polling from API (ws not connected)")
 			s.pullViaAPIAsync(ctx)
 
 		case result := <-s.pullResults:
@@ -838,28 +840,31 @@ func (s *Service) startKernel(nc *model.NodeSpec, users []model.UserSpec) bool {
 	return true
 }
 
-// ensureRunning starts the kernel if it is not running and there are users +
-// config available. Returns true if the kernel is running afterwards.
-func (s *Service) ensureRunning() bool {
-	if s.kernel.IsRunning() {
-		return true
-	}
-	if len(s.lastUsers) > 0 && s.lastConfig != nil {
-		return s.startKernel(s.lastConfig, s.lastUsers)
-	}
-	return false
-}
-
 // ─── User update entry points ───────────────────────────────────────────────
 
 // applyUserUpdate replaces the full user set and hot-swaps the kernel.
 // Called from WS sync.users and REST polling.
 func (s *Service) applyUserUpdate(ctx context.Context, users []model.UserSpec, newHash string, src userStateSource) {
-	if !s.ensureRunning() {
+	prevUsers, prevHash := s.prepareUserState(users, src)
+
+	// A node can legitimately bootstrap with zero users, in which case the
+	// kernel is intentionally not started. The first later user snapshot must
+	// start the kernel with the NEW user set instead of consulting stale
+	// s.lastUsers before prepareUserState has seen the update.
+	if !s.kernel.IsRunning() {
+		if len(users) == 0 || s.lastConfig == nil {
+			return
+		}
+		if !s.startKernel(s.lastConfig, users) {
+			s.restoreUserState(prevUsers, prevHash)
+			return
+		}
+		if newHash != "" {
+			s.lastUserHash = newHash
+		}
 		return
 	}
 
-	prevUsers, prevHash := s.prepareUserState(users, src)
 	added, removed, err := s.kernel.UpdateUsers(users)
 	if err != nil {
 		nlog.Core().Warn(fmt.Sprintf("UpdateUsers failed, restarting kernel: %v", err))
@@ -877,7 +882,8 @@ func (s *Service) applyUserUpdate(ctx context.Context, users []model.UserSpec, n
 }
 
 // applyUserDelta applies an incremental user change (add or remove) directly
-// via the kernel's atomic user API. Kernel updates run before updateUserState.
+// via the kernel's atomic user API. Service state is prepared before kernel
+// mutation so limiter lookups are already correct when the kernel applies it.
 func (s *Service) applyUserDelta(ctx context.Context, action string, deltaUsers []model.UserSpec) {
 	switch action {
 	case "add":
@@ -887,7 +893,16 @@ func (s *Service) applyUserDelta(ctx context.Context, action string, deltaUsers 
 		}
 		merged := mergeUsers(s.lastUsers, deltaUsers)
 
-		if !s.ensureRunning() {
+		// If bootstrap had zero users the kernel is still stopped. Seed service
+		// state with the merged delta and start directly from that state.
+		if !s.kernel.IsRunning() {
+			prevUsers, prevHash := s.prepareUserState(merged, srcDeltaAdd)
+			if s.lastConfig == nil {
+				return
+			}
+			if !s.startKernel(s.lastConfig, merged) {
+				s.restoreUserState(prevUsers, prevHash)
+			}
 			return
 		}
 
@@ -921,7 +936,10 @@ func (s *Service) applyUserDelta(ctx context.Context, action string, deltaUsers 
 		}
 		filtered := subtractUsers(s.lastUsers, deltaUsers)
 
+		// Keep service state current even when the kernel is stopped, otherwise a
+		// later restart can resurrect users that the panel already removed.
 		if !s.kernel.IsRunning() {
+			s.updateUserState(filtered, srcDeltaRm)
 			return
 		}
 
