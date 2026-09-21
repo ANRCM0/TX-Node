@@ -17,7 +17,7 @@
 #   bash deploy.sh help
 #
 # 一键在线执行:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/PaiMonCai/TX-Node/main/deploy.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/PaiMonCai/TX-Node-Installer/main/deploy.sh)
 set -euo pipefail
 
 # ════════════════════════════════════════════════════════════════════
@@ -62,7 +62,7 @@ SELF_COPY="$INSTALL_DIR/deploy.sh"
 # 网络兜底：$SELF_PATH 不可靠时从这里重新拉一份脚本
 # 安装脚本分发仓库。源码仓库私有化前可将 TXNODE_INSTALLER_REPO
 # 切到独立的公开 Installer 仓库，而无需改动脚本其余逻辑。
-TXNODE_INSTALLER_REPO="${TXNODE_INSTALLER_REPO:-PaiMonCai/TX-Node}"
+TXNODE_INSTALLER_REPO="${TXNODE_INSTALLER_REPO:-PaiMonCai/TX-Node-Installer}"
 SCRIPT_RAW_URL="${SCRIPT_RAW_URL:-https://raw.githubusercontent.com/${TXNODE_INSTALLER_REPO}/main/deploy.sh}"
 
 # 运行模式：docker | legacy | none，由 detect_deploy_mode 填充
@@ -2269,7 +2269,7 @@ do_purge() {
 
   echo
   ok "彻底清除完成，系统已恢复干净状态"
-  hint "如需重新部署: bash <(curl -fsSL https://raw.githubusercontent.com/PaiMonCai/TX-Node/main/deploy.sh)"
+  hint "如需重新部署: bash <(curl -fsSL https://raw.githubusercontent.com/PaiMonCai/TX-Node-Installer/main/deploy.sh)"
 }
 
 # ════════════════════════════════════════════════════════════════════
