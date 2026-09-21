@@ -14,10 +14,10 @@ ghcr.io/paimoncai/tx-node:latest
 
 ### 一键部署脚本（推荐）
 
-> **分发架构说明**：运行镜像使用公开的 `ghcr.io/paimoncai/tx-node`。源码仓库后续可设为 Private；在此之前应把 `deploy.sh` 复制到独立的 Public Installer 仓库，并把脚本默认的 `TXNODE_INSTALLER_REPO` 从 `PaiMonCai/TX-Node` 切到该仓库。这样生产机器只依赖公开 Installer + 公开 GHCR，不需要源码仓库权限。
+> **分发架构说明**：运行镜像使用公开的 `ghcr.io/paimoncai/tx-node`。源码仓库后续可设为 Private；在此之前应公开部署入口位于 `PaiMonCai/TX-Node-Installer`；`deploy.sh` 默认从该仓库自更新。这样生产机器只依赖公开 Installer + 公开 GHCR，不需要源码仓库权限。
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/PaiMonCai/TX-Node/main/deploy.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/PaiMonCai/TX-Node-Installer/main/deploy.sh)
 ```
 
 不带参数执行会进入**交互式运维面板**；带参数则非交互执行单个命令。
