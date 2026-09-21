@@ -14,6 +14,8 @@ ghcr.io/paimoncai/tx-node:latest
 
 ### 一键部署脚本（推荐）
 
+> **分发架构说明**：运行镜像使用公开的 `ghcr.io/paimoncai/tx-node`。源码仓库后续可设为 Private；在此之前应把 `deploy.sh` 复制到独立的 Public Installer 仓库，并把脚本默认的 `TXNODE_INSTALLER_REPO` 从 `PaiMonCai/TX-Node` 切到该仓库。这样生产机器只依赖公开 Installer + 公开 GHCR，不需要源码仓库权限。
+
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/PaiMonCai/TX-Node/main/deploy.sh)
 ```
@@ -201,7 +203,7 @@ bash deploy.sh help          # 帮助
 INSTALL_DIR=/opt/tx-node bash deploy.sh install
 ```
 
-可用变量：`INSTALL_DIR`、`APP_NAME`、`IMAGE`、`CLI_LINK`，以及只读探测用的 `LEGACY_INSTALL_ROOT`（默认 `/etc/xboard-node`）。
+可用变量：`INSTALL_DIR`、`APP_NAME`、`IMAGE`、`CLI_LINK`、`SCRIPT_RAW_URL`、`TXNODE_INSTALLER_REPO`，以及只读探测用的 `LEGACY_INSTALL_ROOT`（默认 `/etc/xboard-node`）。
 
 ### 健康检查与节点自愈（`/healthz`）
 
