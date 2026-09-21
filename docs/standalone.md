@@ -24,6 +24,10 @@ TX-Node core code depends on the `ControlPlane` interface and TX-native `NodeSpe
 
 See [`controlplane.md`](controlplane.md) for the adapter contract and extension rules.
 
+## Optional panel plugins
+
+TX-Node does not vendor or release panel-side plugins. AccessAudit is maintained by TXBoard under `integrations/AccessAudit/`; TX-Node only implements the optional audit reporter/client that interoperates with that plugin. Plugin absence must not affect the core node/control-plane protocol.
+
 ## Compatibility boundary
 
 The following are compatibility surfaces, not branding leftovers:
