@@ -141,18 +141,28 @@ func (m *Manager) Reconfigure(ctx context.Context, newCfg config.CertConfig) (bo
 		newCfg.CertDir = m.cfg.CertDir
 	}
 
+	// Capture the currently active material before tearing down ACME. The
+	// caller uses the return value to decide whether the kernel needs a reload.
+	oldTLS := m.TLSCert()
+	newMode := resolveModeFor(newCfg)
+
 	// If ACME is running and the new config materially differs (or switches
 	// away from ACME), tear down the old certmagic instance first.
 	if m.acmeStarted {
 		newFp := acmeFingerprint(newCfg)
-		newMode := resolveModeFor(newCfg)
 		if newMode != "http" && newMode != "dns" || newFp != m.acmeFingerprint {
 			m.tearDownACME()
 		}
 	}
 
-	oldTLS := m.TLSCert()
 	m.cfg = newCfg
+
+	// "none" is an explicit runtime transition. Start() intentionally does
+	// nothing for that mode, so clear any material left by self/file/content
+	// modes here instead of silently retaining a previously active certificate.
+	if newMode == "none" {
+		m.mat.Store(nil)
+	}
 
 	if err := m.Start(ctx); err != nil {
 		return false, fmt.Errorf("cert reconfigure: %w", err)
