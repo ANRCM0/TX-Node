@@ -60,7 +60,10 @@ XBCTL_PATH="/usr/local/bin/xbctl"
 # 本脚本的持久化副本（快捷命令 txnode 应该指向这里，而不是 $SELF_PATH）
 SELF_COPY="$INSTALL_DIR/deploy.sh"
 # 网络兜底：$SELF_PATH 不可靠时从这里重新拉一份脚本
-SCRIPT_RAW_URL="${SCRIPT_RAW_URL:-https://raw.githubusercontent.com/PaiMonCai/TX-Node/main/deploy.sh}"
+# 安装脚本分发仓库。源码仓库私有化前可将 TXNODE_INSTALLER_REPO
+# 切到独立的公开 Installer 仓库，而无需改动脚本其余逻辑。
+TXNODE_INSTALLER_REPO="${TXNODE_INSTALLER_REPO:-PaiMonCai/TX-Node}"
+SCRIPT_RAW_URL="${SCRIPT_RAW_URL:-https://raw.githubusercontent.com/${TXNODE_INSTALLER_REPO}/main/deploy.sh}"
 
 # 运行模式：docker | legacy | none，由 detect_deploy_mode 填充
 DEPLOY_MODE=""
