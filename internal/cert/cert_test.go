@@ -234,3 +234,51 @@ func TestACMEFingerprintEnvOrderStable(t *testing.T) {
 		t.Fatal("fingerprint not order-independent")
 	}
 }
+
+
+func TestReconfigureNoneClearsActiveCertificateMaterial(t *testing.T) {
+	certPEM, keyPEM := generateSelfSignedPair(t, "example.test")
+
+	tests := []struct {
+		name        string
+		oldMode     string
+		acmeStarted bool
+	}{
+		{name: "self", oldMode: "self"},
+		{name: "file", oldMode: "file"},
+		{name: "content", oldMode: "content"},
+		{name: "dns", oldMode: "dns", acmeStarted: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			m := NewManager(config.CertConfig{
+				CertMode: tt.oldMode,
+				CertDir:  dir,
+			})
+			m.mat.Store(&certMaterial{certPEM: certPEM, keyPEM: keyPEM})
+			if tt.acmeStarted {
+				m.acmeStarted = true
+				m.acmeFingerprint = acmeFingerprint(m.cfg)
+			}
+
+			changed, err := m.Reconfigure(context.Background(), config.CertConfig{
+				CertMode: "none",
+				CertDir:  dir,
+			})
+			if err != nil {
+				t.Fatalf("Reconfigure(none): %v", err)
+			}
+			if !changed {
+				t.Fatal("expected certificate removal to report changed=true")
+			}
+			if m.HasCert() {
+				t.Fatal("expected active certificate material to be cleared")
+			}
+			if got := m.resolveMode(); got != "none" {
+				t.Fatalf("resolveMode() = %q, want none", got)
+			}
+		})
+	}
+}
