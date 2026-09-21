@@ -289,3 +289,35 @@ func TestWSClient_UserDeltaEvent(t *testing.T) {
 		t.Errorf("unexpected DeltaUsers: %+v", received[0].DeltaUsers)
 	}
 }
+
+
+func TestWSClient_EmptyUserSnapshotIsDelivered(t *testing.T) {
+	var received *WSEvent
+	ws := &WSClient{
+		onEvent: func(event WSEvent) {
+			copy := event
+			received = &copy
+		},
+	}
+
+	ws.handleDataEvent(wsMessage{
+		Event: WSEventSyncUsers,
+		Data:  json.RawMessage(`{"users":[],"node_id":7}`),
+	})
+
+	if received == nil {
+		t.Fatal("expected empty full user snapshot to be delivered")
+	}
+	if received.Type != WSEventSyncUsers {
+		t.Fatalf("event.Type = %q, want %q", received.Type, WSEventSyncUsers)
+	}
+	if received.NodeID != 7 {
+		t.Fatalf("event.NodeID = %d, want 7", received.NodeID)
+	}
+	if received.Users == nil {
+		t.Fatal("expected Users to be a non-nil empty slice")
+	}
+	if len(received.Users) != 0 {
+		t.Fatalf("len(Users) = %d, want 0", len(received.Users))
+	}
+}

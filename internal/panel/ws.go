@@ -388,14 +388,32 @@ func (w *WSClient) handleDataEvent(msg wsMessage) {
 
 	case WSEventSyncUsers:
 		nlog.Core().Debug("ws sync users event received")
-		var p syncUsersPayload
-		if err := decodeData(msg.Data, &p); err != nil {
+
+		// An empty users array is a valid full snapshot: it means the panel
+		// revoked every user from this node. Only reject a missing/null or
+		// non-array users field as malformed.
+		var raw map[string]interface{}
+		if err := json.Unmarshal(msg.Data, &raw); err != nil {
 			nlog.Core().Warn("ws: cannot decode users payload", "error", err)
 			return
 		}
-		if len(p.Users) == 0 {
-			nlog.Core().Warn("ws: users payload empty")
+		usersRaw, ok := raw["users"]
+		if !ok || usersRaw == nil {
+			nlog.Core().Warn("ws: users payload missing users")
 			return
+		}
+		if _, ok := usersRaw.([]interface{}); !ok {
+			nlog.Core().Warn("ws: users payload users is not an array")
+			return
+		}
+
+		var p syncUsersPayload
+		if err := decodeWeakRaw(raw, &p); err != nil {
+			nlog.Core().Warn("ws: cannot decode users payload", "error", err)
+			return
+		}
+		if p.Users == nil {
+			p.Users = []User{}
 		}
 		event.Users = p.Users
 		event.NodeID = p.NodeID
