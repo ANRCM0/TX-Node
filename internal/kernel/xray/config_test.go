@@ -325,6 +325,24 @@ func TestBuildRouting_WithRules(t *testing.T) {
 	}
 }
 
+func TestBuildRouting_DNSRouteUsesConfiguredOutbound(t *testing.T) {
+	routing := buildRouting(testRouteRules([]panel.RouteRule{{
+		ID: 7, Match: []string{"dns.example.com"}, Action: "dns", ActionValue: "dns-egress",
+	}}), nil, nil)
+	rules := routing["rules"].([]M)
+	if got := rules[1]["outboundTag"]; got != "dns-egress" {
+		t.Fatalf("dns route outbound: got %v, want dns-egress", got)
+	}
+
+	routing = buildRouting(testRouteRules([]panel.RouteRule{{
+		ID: 8, Match: []string{"empty.example.com"}, Action: "dns",
+	}}), nil, nil)
+	rules = routing["rules"].([]M)
+	if got := rules[1]["outboundTag"]; got != "block" {
+		t.Fatalf("empty dns target must fail closed: got %v, want block", got)
+	}
+}
+
 func TestBuildRouting_WithCustomRouteRules(t *testing.T) {
 	customRules := []model.CustomRouteRule{
 		{
