@@ -321,3 +321,49 @@ func TestWSClient_EmptyUserSnapshotIsDelivered(t *testing.T) {
 		t.Fatalf("len(Users) = %d, want 0", len(received.Users))
 	}
 }
+
+
+func TestWSClient_OpsRequestEvent(t *testing.T) {
+	var received *WSEvent
+	ws := &WSClient{
+		onEvent: func(event WSEvent) {
+			copy := event
+			received = &copy
+		},
+	}
+
+	ws.handleMessage(wsMessage{
+		Event: WSEventOpsKernelRestart,
+		Data: json.RawMessage(`{"request_id":"ops_123","node_id":7,"args":{}}`),
+	})
+
+	if received == nil {
+		t.Fatal("expected ops request to be delivered")
+	}
+	if received.OpsRequest == nil {
+		t.Fatal("expected OpsRequest")
+	}
+	if received.NodeID != 7 {
+		t.Fatalf("NodeID = %d, want 7", received.NodeID)
+	}
+	if received.OpsRequest.RequestID != "ops_123" {
+		t.Fatalf("RequestID = %q, want ops_123", received.OpsRequest.RequestID)
+	}
+	if received.OpsRequest.Operation != WSEventOpsKernelRestart {
+		t.Fatalf("Operation = %q, want %q", received.OpsRequest.Operation, WSEventOpsKernelRestart)
+	}
+}
+
+func TestWSClient_OpsRequestRejectsMissingRequestID(t *testing.T) {
+	called := false
+	ws := &WSClient{onEvent: func(WSEvent) { called = true }}
+
+	ws.handleMessage(wsMessage{
+		Event: WSEventOpsKernelStatus,
+		Data:  json.RawMessage(`{"node_id":7,"args":{}}`),
+	})
+
+	if called {
+		t.Fatal("expected invalid ops request to be dropped")
+	}
+}

@@ -162,3 +162,31 @@ func TestNodeMailboxDeltaFailedApplyNotifies(t *testing.T) {
 		t.Fatal("expected NeedsReconcile for invalid delta action")
 	}
 }
+
+
+func TestNodeMailboxPreservesOpsRequestsInOrder(t *testing.T) {
+	mb := NewNodeMailbox()
+	mb.Apply(Event{
+		Type: EventOpsRequest,
+		OpsRequest: &OpsRequest{RequestID: "ops_1", Operation: "ops.kernel.status", Args: map[string]interface{}{}},
+	})
+	mb.Apply(Event{
+		Type: EventOpsRequest,
+		OpsRequest: &OpsRequest{RequestID: "ops_2", Operation: "ops.kernel.restart", Args: map[string]interface{}{}},
+	})
+	mb.MarkReady()
+
+	state := mb.DrainIfReady()
+	if len(state.OpsRequests) != 2 {
+		t.Fatalf("expected 2 ops requests, got %d", len(state.OpsRequests))
+	}
+	if state.OpsRequests[0].RequestID != "ops_1" || state.OpsRequests[1].RequestID != "ops_2" {
+		t.Fatalf("unexpected ops order: %+v", state.OpsRequests)
+	}
+
+	// Draining consumes operation requests exactly once.
+	state = mb.DrainIfReady()
+	if len(state.OpsRequests) != 0 {
+		t.Fatalf("expected ops queue to be empty after drain, got %+v", state.OpsRequests)
+	}
+}

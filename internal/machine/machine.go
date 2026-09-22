@@ -585,3 +585,30 @@ func (p *machineNodePush) SendDeviceReport(devices map[int][]string) {
 	data, _ := json.Marshal(payload)
 	p.ws.SendRaw(panel.WSEventReportDevices, data)
 }
+
+func (p *machineNodePush) SendOpsResult(result controlplane.OpsResult) {
+	if p.ws == nil {
+		return
+	}
+	payload := map[string]interface{}{
+		"node_id":    p.nodeID,
+		"request_id": result.RequestID,
+		"operation":  result.Operation,
+		"ok":         result.OK,
+	}
+	if result.Result != nil {
+		payload["result"] = result.Result
+	}
+	if result.ErrorCode != "" {
+		payload["error_code"] = result.ErrorCode
+	}
+	if result.Message != "" {
+		payload["message"] = result.Message
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		nlog.Core().Warn("machine: cannot encode ops result", "error", err)
+		return
+	}
+	p.ws.SendRaw(panel.WSEventOpsResult, data)
+}
