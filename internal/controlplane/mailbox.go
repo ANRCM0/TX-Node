@@ -11,6 +11,7 @@ type MailboxState struct {
 	Config         *model.NodeSpec
 	Users          []model.UserSpec
 	DeviceUsers    map[int][]string
+	OpsRequests    []OpsRequest
 	HasConfig      bool
 	HasUsers       bool
 	HasDevices     bool
@@ -26,6 +27,7 @@ type NodeMailbox struct {
 	config           *model.NodeSpec
 	users            []model.UserSpec
 	deviceUsers      map[int][]string
+	opsRequests      []OpsRequest
 	dirtyConfig      bool
 	dirtyUsers       bool
 	dirtyDevices     bool
@@ -84,6 +86,15 @@ func (m *NodeMailbox) Apply(event Event) {
 			m.dirtyDevices = true
 			changed = true
 		}
+	case EventOpsRequest:
+		if event.OpsRequest != nil {
+			request := *event.OpsRequest
+			if request.Args != nil {
+				request.Args = cloneAnyMap(request.Args)
+			}
+			m.opsRequests = append(m.opsRequests, request)
+			changed = true
+		}
 	case EventSyncUserDelta:
 		if len(event.DeltaUsers) > 0 {
 			if !m.hasFullUserState {
@@ -135,6 +146,10 @@ func (m *NodeMailbox) DrainIfReady() MailboxState {
 		state.DeviceUsers = cloneDeviceUsers(m.deviceUsers)
 		state.HasDevices = true
 		m.dirtyDevices = false
+	}
+	if len(m.opsRequests) > 0 {
+		state.OpsRequests = append([]OpsRequest(nil), m.opsRequests...)
+		m.opsRequests = nil
 	}
 	m.needsReconcile = false
 	return state
@@ -206,6 +221,17 @@ func cloneUsers(users []model.UserSpec) []model.UserSpec {
 	}
 	cloned := make([]model.UserSpec, len(users))
 	copy(cloned, users)
+	return cloned
+}
+
+func cloneAnyMap(values map[string]interface{}) map[string]interface{} {
+	if values == nil {
+		return nil
+	}
+	cloned := make(map[string]interface{}, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
 	return cloned
 }
 

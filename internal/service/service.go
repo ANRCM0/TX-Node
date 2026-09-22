@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -442,6 +444,10 @@ func (s *Service) drainMachineMailbox(ctx context.Context) {
 	if state.HasDevices {
 		s.handleWSEvent(ctx, controlplane.Event{Type: controlplane.EventSyncDevices, DeviceUsers: state.DeviceUsers})
 	}
+	for i := range state.OpsRequests {
+		request := state.OpsRequests[i]
+		s.handleWSEvent(ctx, controlplane.Event{Type: controlplane.EventOpsRequest, OpsRequest: &request})
+	}
 	if state.NeedsReconcile {
 		s.requestWSResync(ctx, "machine_mailbox_reconcile")
 	}
@@ -616,9 +622,182 @@ func (s *Service) handleWSEvent(ctx context.Context, event controlplane.Event) {
 			s.kernel.UpdateGlobalDevices(event.DeviceUsers)
 		}
 
+	case controlplane.EventOpsRequest:
+		if event.OpsRequest != nil {
+			s.handleOpsRequest(ctx, event.OpsRequest)
+		}
+
 	default:
 		nlog.Core().Debug(fmt.Sprintf("unknown ws event: %v", event.Type))
 	}
+}
+
+func (s *Service) handleOpsRequest(ctx context.Context, request *controlplane.OpsRequest) {
+	if request == nil || request.RequestID == "" {
+		return
+	}
+
+	ok := func(result map[string]interface{}) {
+		s.sendOpsResult(controlplane.OpsResult{
+			RequestID: request.RequestID,
+			Operation: request.Operation,
+			OK:        true,
+			Result:    result,
+		})
+	}
+	fail := func(code string, err error) {
+		message := ""
+		if err != nil {
+			message = err.Error()
+		}
+		s.sendOpsResult(controlplane.OpsResult{
+			RequestID: request.RequestID,
+			Operation: request.Operation,
+			OK:        false,
+			ErrorCode: code,
+			Message:   message,
+		})
+	}
+
+	s.metricsMu.RLock()
+	configSnapshot := s.lastConfig
+	usersSnapshot := append([]model.UserSpec(nil), s.lastUsers...)
+	s.metricsMu.RUnlock()
+
+	switch request.Operation {
+	case "ops.kernel.status":
+		ok(map[string]interface{}{
+			"kernel":  s.kernel.Name(),
+			"running": s.kernel.IsRunning(),
+		})
+
+	case "ops.kernel.restart":
+		if configSnapshot == nil {
+			fail("config_unavailable", fmt.Errorf("node config is not available"))
+			return
+		}
+		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), configSnapshot, s.cert.TLSCert()); err != nil {
+			fail("config_invalid", err)
+			return
+		}
+		if !s.startKernel(configSnapshot, usersSnapshot) {
+			fail("kernel_restart_failed", fmt.Errorf("kernel restart failed"))
+			return
+		}
+		ok(map[string]interface{}{
+			"kernel":         s.kernel.Name(),
+			"kernel_running": s.kernel.IsRunning(),
+		})
+
+	case "ops.config.validate":
+		if configSnapshot == nil {
+			fail("config_unavailable", fmt.Errorf("node config is not available"))
+			return
+		}
+		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), configSnapshot, s.cert.TLSCert()); err != nil {
+			fail("config_invalid", err)
+			return
+		}
+		ok(map[string]interface{}{"valid": true})
+
+	case "ops.config.reload":
+		if configSnapshot == nil {
+			fail("config_unavailable", fmt.Errorf("node config is not available"))
+			return
+		}
+		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), configSnapshot, s.cert.TLSCert()); err != nil {
+			fail("config_invalid", err)
+			return
+		}
+		if err := s.kernel.Reload(configSnapshot, usersSnapshot, s.cert.TLSCert()); err != nil {
+			fail("config_reload_failed", err)
+			return
+		}
+		s.appliedState.Config = configSnapshot
+		s.appliedState.Users = usersSnapshot
+		ok(map[string]interface{}{
+			"reloaded":       true,
+			"kernel_running": s.kernel.IsRunning(),
+		})
+
+	case "ops.system.info":
+		metrics := s.wsMetrics()
+		metrics["kernel"] = s.kernel.Name()
+		ok(metrics)
+
+	case "ops.network.dns":
+		target, err := opsNetworkTarget(request.Args)
+		if err != nil {
+			fail("invalid_target", err)
+			return
+		}
+		opCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		addresses, err := net.DefaultResolver.LookupHost(opCtx, target)
+		cancel()
+		if err != nil {
+			fail("dns_lookup_failed", err)
+			return
+		}
+		if len(addresses) > 16 {
+			addresses = addresses[:16]
+		}
+		ok(map[string]interface{}{"target": target, "addresses": addresses})
+
+	case "ops.network.port_check":
+		target, err := opsNetworkTarget(request.Args)
+		if err != nil {
+			fail("invalid_target", err)
+			return
+		}
+		port, err := opsPort(request.Args)
+		if err != nil {
+			fail("invalid_port", err)
+			return
+		}
+		dialer := net.Dialer{Timeout: 5 * time.Second}
+		opCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		conn, err := dialer.DialContext(opCtx, "tcp", net.JoinHostPort(target, strconv.Itoa(port)))
+		cancel()
+		if err != nil {
+			fail("port_check_failed", err)
+			return
+		}
+		_ = conn.Close()
+		ok(map[string]interface{}{"target": target, "port": port, "reachable": true})
+
+	default:
+		fail("unsupported_operation", fmt.Errorf("unsupported operation: %s", request.Operation))
+	}
+}
+
+func (s *Service) sendOpsResult(result controlplane.OpsResult) {
+	sender, ok := s.wsClient.(controlplane.OpsResultSender)
+	if !ok || sender == nil {
+		nlog.Core().Warn("cannot send ops result: push client has no ops result channel",
+			"request_id", result.RequestID, "operation", result.Operation)
+		return
+	}
+	sender.SendOpsResult(result)
+}
+
+func opsNetworkTarget(args map[string]interface{}) (string, error) {
+	target := strings.TrimSpace(fmt.Sprint(args["target"]))
+	if target == "" || target == "<nil>" {
+		return "", fmt.Errorf("target is required")
+	}
+	if len(target) > 253 || strings.ContainsAny(target, " /\\@?#\t\r\n") {
+		return "", fmt.Errorf("target has invalid characters")
+	}
+	return target, nil
+}
+
+func opsPort(args map[string]interface{}) (int, error) {
+	raw := strings.TrimSpace(fmt.Sprint(args["port"]))
+	port, err := strconv.Atoi(raw)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("port must be between 1 and 65535")
+	}
+	return port, nil
 }
 
 // pullViaAPIAsync fetches config/users from the panel API in a background
