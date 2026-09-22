@@ -646,6 +646,20 @@ func TestBuildRoutes_WithCustomRules(t *testing.T) {
 	}
 }
 
+func TestBuildRoutes_DNSRouteUsesConfiguredOutbound(t *testing.T) {
+	route := buildRoutes(testRouteRules([]panel.RouteRule{{
+		ID: 7, Match: []string{"dns.example.com"}, Action: "dns", ActionValue: "dns-egress",
+	}}), nil, nil)
+	rules := route["rules"].([]M)
+	assertMapValue(t, rules[2], "outbound", "dns-egress")
+
+	route = buildRoutes(testRouteRules([]panel.RouteRule{{
+		ID: 8, Match: []string{"empty.example.com"}, Action: "dns",
+	}}), nil, nil)
+	rules = route["rules"].([]M)
+	assertMapValue(t, rules[2], "outbound", "block")
+}
+
 func TestBuildRoutes_MultiMatch(t *testing.T) {
 	// A single route with mixed domain + CIDR matches should produce separate rules
 	// Wildcard *.evil.com should become evil.com for domain_suffix
