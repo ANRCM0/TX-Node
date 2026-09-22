@@ -9,6 +9,8 @@ import (
 	"io"
 	"math"
 	"net"
+	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -754,6 +756,14 @@ func (s *Service) handleOpsRequest(ctx context.Context, request *controlplane.Op
 		}
 		ok(map[string]interface{}{"target": target, "addresses": addresses})
 
+	case "ops.logs.tail":
+		result, err := s.tailApplicationLog(request.Args)
+		if err != nil {
+			fail("log_tail_failed", err)
+			return
+		}
+		ok(result)
+
 	case "ops.network.port_check":
 		target, err := opsNetworkTarget(request.Args)
 		if err != nil {
@@ -818,6 +828,121 @@ func (s *Service) sendOpsResult(result controlplane.OpsResult) {
 		return
 	}
 	sender.SendOpsResult(result)
+}
+
+var opsAuthorizationPattern = regexp.MustCompile(`(?i)(authorization:\s*bearer\s+)[^\s]+`)
+var opsSecretPattern = regexp.MustCompile(`(?i)("?(token|password|passwd|secret|private_key|api_key|credential|uuid)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)`)
+
+func (s *Service) tailApplicationLog(args map[string]interface{}) (map[string]interface{}, error) {
+	source := strings.ToLower(strings.TrimSpace(fmt.Sprint(args["source"])))
+	if source == "" || source == "<nil>" {
+		source = "application"
+	}
+	if source != "application" {
+		return nil, fmt.Errorf("unsupported log source")
+	}
+
+	output := strings.TrimSpace(s.cfg.Log.Output)
+	if output == "" || output == "stdout" || output == "stderr" {
+		return nil, fmt.Errorf("application log is not configured as a file")
+	}
+
+	lines, err := opsBoundedInt(args, "lines", 100, 1, 200)
+	if err != nil {
+		return nil, err
+	}
+	maxBytes, err := opsBoundedInt(args, "max_bytes", 65536, 1024, 65536)
+	if err != nil {
+		return nil, err
+	}
+
+	content, truncated, err := tailLogFile(output, lines, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"source":    "application",
+		"lines":     lines,
+		"max_bytes": maxBytes,
+		"truncated": truncated,
+		"content":   redactOpsLog(content),
+	}, nil
+}
+
+func tailLogFile(path string, lines, maxBytes int) (string, bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", false, fmt.Errorf("open application log: %w", err)
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return "", false, fmt.Errorf("stat application log: %w", err)
+	}
+
+	window := int64(maxBytes * 4)
+	if window < 4096 {
+		window = 4096
+	}
+	if window > 262144 {
+		window = 262144
+	}
+
+	start := stat.Size() - window
+	truncated := start > 0
+	if start < 0 {
+		start = 0
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		return "", false, fmt.Errorf("seek application log: %w", err)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(file, window))
+	if err != nil {
+		return "", false, fmt.Errorf("read application log: %w", err)
+	}
+
+	parts := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	if start > 0 && len(parts) > 0 {
+		parts = parts[1:]
+	}
+	for len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	if len(parts) > lines {
+		parts = parts[len(parts)-lines:]
+		truncated = true
+	}
+
+	content := strings.Join(parts, "\n")
+	if len(content) > maxBytes {
+		content = content[len(content)-maxBytes:]
+		if idx := strings.IndexByte(content, '\n'); idx >= 0 {
+			content = content[idx+1:]
+		}
+		truncated = true
+	}
+
+	return content, truncated, nil
+}
+
+func redactOpsLog(content string) string {
+	content = opsAuthorizationPattern.ReplaceAllString(content, "$1[REDACTED]")
+	return opsSecretPattern.ReplaceAllString(content, "$1[REDACTED]")
+}
+
+func opsBoundedInt(args map[string]interface{}, key string, fallback, minValue, maxValue int) (int, error) {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(fmt.Sprint(raw)))
+	if err != nil || value < minValue || value > maxValue {
+		return 0, fmt.Errorf("%s must be between %d and %d", key, minValue, maxValue)
+	}
+	return value, nil
 }
 
 func opsNetworkTarget(args map[string]interface{}) (string, error) {

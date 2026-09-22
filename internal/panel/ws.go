@@ -29,6 +29,7 @@ const (
 	WSEventOpsSystemInfo = "ops.system.info"
 	WSEventOpsNetworkDNS = "ops.network.dns"
 	WSEventOpsNetworkPortCheck = "ops.network.port_check"
+	WSEventOpsLogsTail = "ops.logs.tail"
 	WSEventOpsResult = "ops.result"
 )
 
@@ -376,7 +377,8 @@ func (w *WSClient) handleMessage(msg wsMessage) {
 		WSEventOpsConfigReload,
 		WSEventOpsSystemInfo,
 		WSEventOpsNetworkDNS,
-		WSEventOpsNetworkPortCheck:
+		WSEventOpsNetworkPortCheck,
+		WSEventOpsLogsTail:
 		w.handleDataEvent(msg)
 
 	default:
@@ -492,7 +494,8 @@ func (w *WSClient) handleDataEvent(msg wsMessage) {
 		WSEventOpsConfigReload,
 		WSEventOpsSystemInfo,
 		WSEventOpsNetworkDNS,
-		WSEventOpsNetworkPortCheck:
+		WSEventOpsNetworkPortCheck,
+		WSEventOpsLogsTail:
 		var p OpsRequest
 		if err := decodeData(msg.Data, &p); err != nil {
 			nlog.Core().Warn("ws: cannot decode ops request", "event", msg.Event, "error", err)
