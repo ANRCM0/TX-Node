@@ -42,9 +42,11 @@ The following are compatibility surfaces, not branding leftovers:
 Canonical TX-Node-facing identities are:
 
 - node binary: `tx-node`;
-- host Docker deployment directory: `/etc/txnode`;
 - Docker image: `ghcr.io/paimoncai/tx-node`;
-- management entry point: `deploy.sh` / `txnode`.
+- runtime source/release repository: `PaiMonCai/TX-Node`;
+- installation and host-management entry point: public `PaiMonCai/TX-Node-Installer`.
+
+The runtime repository intentionally does not carry an installer copy. Host deployment layout such as `/etc/txnode`, the `txnode` management command, multi-panel instance management, backup/rollback, and Docker Compose generation are owned by TX-Node-Installer.
 
 `xbctl` is intentionally **not** renamed to `txctl` yet. Its service/configuration model still targets the legacy systemd installation layout, while its release download source now points to `PaiMonCai/TX-Node`. A future `txctl` should be introduced only after the management CLI is redesigned around the current TX-Node deployment model.
 

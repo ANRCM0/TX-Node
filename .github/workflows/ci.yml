@@ -35,11 +35,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Validate deploy script
-        run: |
-          bash -n deploy.sh
-          bash tests/deploy_multi_instance_test.sh
-
       - name: Run tests
         run: make test
 
