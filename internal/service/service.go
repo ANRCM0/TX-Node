@@ -831,7 +831,7 @@ func (s *Service) sendOpsResult(result controlplane.OpsResult) {
 }
 
 var opsAuthorizationPattern = regexp.MustCompile(`(?i)(authorization:\s*bearer\s+)[^\s]+`)
-var opsSecretPattern = regexp.MustCompile(`(?i)("?(?:token|password|passwd|secret|private_key|api_key|credential|uuid)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)`)
+var opsSecretPattern = regexp.MustCompile(`(?i)("?(token|password|passwd|secret|private_key|api_key|credential|uuid)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)`)
 
 func (s *Service) tailApplicationLog(args map[string]interface{}) (map[string]interface{}, error) {
 	source := strings.ToLower(strings.TrimSpace(fmt.Sprint(args["source"])))
