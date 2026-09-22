@@ -221,8 +221,6 @@ func compilePanelRouteRule(pr model.RouteRule) []M {
 	case "dns":
 		if pr.ActionValue != "" {
 			outbound = pr.ActionValue
-		} else {
-			outbound = "dns-out"
 		}
 	case "proxy":
 		if pr.ActionValue != "" {

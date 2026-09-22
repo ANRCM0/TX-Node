@@ -713,9 +713,11 @@ func compilePanelRouteRule(rule model.RouteRule) []M {
 	switch rule.Action {
 	case "direct":
 		action.Type = "direct"
-	case "proxy":
-		action.Type = "route"
-		action.Target = rule.ActionValue
+	case "dns", "proxy":
+		if rule.ActionValue != "" {
+			action.Type = "route"
+			action.Target = rule.ActionValue
+		}
 	}
 	return compileCustomRouteRule(model.CustomRouteRule{Match: match, Action: action})
 }
