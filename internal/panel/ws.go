@@ -21,7 +21,15 @@ const (
 	WSEventSyncUserDelta = "sync.user.delta"
 	WSEventSyncDevices   = "sync.devices"   // panel → node: global device state
 	WSEventSyncNodes     = "sync.nodes"     // panel → machine: node list changed
-	WSEventReportDevices = "report.devices" // node → panel: report device snapshot
+	WSEventReportDevices  = "report.devices" // node → panel: report device snapshot
+	WSEventOpsKernelStatus = "ops.kernel.status"
+	WSEventOpsKernelRestart = "ops.kernel.restart"
+	WSEventOpsConfigValidate = "ops.config.validate"
+	WSEventOpsConfigReload = "ops.config.reload"
+	WSEventOpsSystemInfo = "ops.system.info"
+	WSEventOpsNetworkDNS = "ops.network.dns"
+	WSEventOpsNetworkPortCheck = "ops.network.port_check"
+	WSEventOpsResult = "ops.result"
 )
 
 // WSEvent is a parsed data event delivered to the service layer.
@@ -38,6 +46,9 @@ type WSEvent struct {
 
 	// Machine node discovery fields (for sync.nodes)
 	Nodes []MachineNode
+
+	// Typed Agent Ops request. Only allow-listed ops.* events populate this.
+	OpsRequest *OpsRequest
 }
 
 // WSStatusChange notifies the service when WS connectivity changes.
@@ -82,6 +93,16 @@ type syncDevicesPayload struct {
 // syncNodesPayload carries the updated node list for a machine.
 type syncNodesPayload struct {
 	Nodes []MachineNode `json:"nodes"`
+}
+
+// OpsRequest is a typed, bounded operation request delivered by TXBoard.
+// Operation is populated from the WebSocket event name and is never taken from
+// caller-controlled data inside the payload.
+type OpsRequest struct {
+	RequestID string                 `json:"request_id"`
+	Args      map[string]interface{} `json:"args"`
+	NodeID    int                    `json:"node_id"`
+	Operation string                 `json:"-"`
 }
 
 // WSClientConfig holds WebSocket client tuning options.
@@ -349,6 +370,15 @@ func (w *WSClient) handleMessage(msg wsMessage) {
 	case WSEventSyncNodes:
 		w.handleDataEvent(msg)
 
+	case WSEventOpsKernelStatus,
+		WSEventOpsKernelRestart,
+		WSEventOpsConfigValidate,
+		WSEventOpsConfigReload,
+		WSEventOpsSystemInfo,
+		WSEventOpsNetworkDNS,
+		WSEventOpsNetworkPortCheck:
+		w.handleDataEvent(msg)
+
 	default:
 		nlog.Core().Debug("ws unknown event", "event", msg.Event)
 	}
@@ -455,6 +485,33 @@ func (w *WSClient) handleDataEvent(msg wsMessage) {
 			return
 		}
 		event.Nodes = p.Nodes
+
+	case WSEventOpsKernelStatus,
+		WSEventOpsKernelRestart,
+		WSEventOpsConfigValidate,
+		WSEventOpsConfigReload,
+		WSEventOpsSystemInfo,
+		WSEventOpsNetworkDNS,
+		WSEventOpsNetworkPortCheck:
+		var p OpsRequest
+		if err := decodeData(msg.Data, &p); err != nil {
+			nlog.Core().Warn("ws: cannot decode ops request", "event", msg.Event, "error", err)
+			return
+		}
+		if p.RequestID == "" {
+			nlog.Core().Warn("ws: ops request missing request_id", "event", msg.Event)
+			return
+		}
+		if len(p.RequestID) > 64 {
+			nlog.Core().Warn("ws: ops request_id too long", "event", msg.Event)
+			return
+		}
+		if p.Args == nil {
+			p.Args = map[string]interface{}{}
+		}
+		p.Operation = msg.Event
+		event.OpsRequest = &p
+		event.NodeID = p.NodeID
 	}
 
 	w.onEvent(event)
