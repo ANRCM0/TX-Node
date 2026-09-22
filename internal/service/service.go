@@ -79,6 +79,12 @@ type Service struct {
 
 	// metricsMu: lastUsers, lastConfig, wsClient, wsDisconnectAt (buildMetrics vs main loop).
 	metricsMu sync.RWMutex
+
+	// Agent Ops request IDs are cached so replaying a WebSocket request cannot
+	// repeat a non-idempotent action such as kernel.restart.
+	opsMu      sync.Mutex
+	opsResults map[string]controlplane.OpsResult
+	opsOrder   []string
 }
 
 // pullResult carries the outcome of an async pullViaAPI back to the main goroutine.
@@ -194,6 +200,7 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 		wsEvents:     make(chan controlplane.Event, 16),
 		wsStatusCh:   make(chan controlplane.StatusChange, 4),
 		pullResults:  make(chan pullResult, 1),
+		opsResults:   make(map[string]controlplane.OpsResult),
 	}
 }
 
@@ -636,9 +643,13 @@ func (s *Service) handleOpsRequest(ctx context.Context, request *controlplane.Op
 	if request == nil || request.RequestID == "" {
 		return
 	}
+	if cached, found := s.cachedOpsResult(request.RequestID); found {
+		s.sendOpsResult(cached)
+		return
+	}
 
 	ok := func(result map[string]interface{}) {
-		s.sendOpsResult(controlplane.OpsResult{
+		s.completeOpsResult(controlplane.OpsResult{
 			RequestID: request.RequestID,
 			Operation: request.Operation,
 			OK:        true,
@@ -650,7 +661,7 @@ func (s *Service) handleOpsRequest(ctx context.Context, request *controlplane.Op
 		if err != nil {
 			message = err.Error()
 		}
-		s.sendOpsResult(controlplane.OpsResult{
+		s.completeOpsResult(controlplane.OpsResult{
 			RequestID: request.RequestID,
 			Operation: request.Operation,
 			OK:        false,
@@ -768,6 +779,35 @@ func (s *Service) handleOpsRequest(ctx context.Context, request *controlplane.Op
 	default:
 		fail("unsupported_operation", fmt.Errorf("unsupported operation: %s", request.Operation))
 	}
+}
+
+const maxOpsResultCache = 128
+
+func (s *Service) cachedOpsResult(requestID string) (controlplane.OpsResult, bool) {
+	s.opsMu.Lock()
+	defer s.opsMu.Unlock()
+	result, ok := s.opsResults[requestID]
+	return result, ok
+}
+
+func (s *Service) completeOpsResult(result controlplane.OpsResult) {
+	s.opsMu.Lock()
+	if existing, ok := s.opsResults[result.RequestID]; ok {
+		result = existing
+	} else {
+		if s.opsResults == nil {
+			s.opsResults = make(map[string]controlplane.OpsResult)
+		}
+		s.opsResults[result.RequestID] = result
+		s.opsOrder = append(s.opsOrder, result.RequestID)
+		if len(s.opsOrder) > maxOpsResultCache {
+			oldest := s.opsOrder[0]
+			s.opsOrder = s.opsOrder[1:]
+			delete(s.opsResults, oldest)
+		}
+	}
+	s.opsMu.Unlock()
+	s.sendOpsResult(result)
 }
 
 func (s *Service) sendOpsResult(result controlplane.OpsResult) {
