@@ -1,6 +1,10 @@
 # TX-Node
 
-TX-Node 是独立维护的 **Xboard 兼容节点运行时**，支持 `sing-box` / `xray-core` 双内核，并在节点运行、machine 自愈、访问审计、部署运维和发布流程上持续独立演进。
+TX-Node 是 TXBoard 体系中的独立 **Agent / Data Plane Runtime**，同时保留 Xboard 协议兼容。它负责 Control Plane 通信、Machine / Node 编排、Kernel 生命周期、用户与流量策略执行、运行状态上报和有限 typed ops；它不是第二个 Control Plane，也不是通用主机管理 Agent。
+
+TX-Node 支持 `sing-box` / `xray-core` 双内核。安装、升级、回滚与主机部署生命周期继续由公开的 TX-Node-Installer 负责。
+
+运行时职责收口规则见 [`docs/runtime-boundary.md`](docs/runtime-boundary.md)。
 
 项目起源于 [cedar2025/Xboard-Node](https://github.com/cedar2025/Xboard-Node)。TX-Node 保留 Xboard 面板 API、认证字段和现有节点配置的协议兼容，但不再以周期性同步上游作为开发模式；上游后续修复会按需审查并选择性移植。独立维护策略见 [`docs/standalone.md`](docs/standalone.md)。
 

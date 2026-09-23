@@ -28,6 +28,23 @@ See [`controlplane.md`](controlplane.md) for the adapter contract and extension 
 
 TX-Node does not vendor or release panel-side plugins. AccessAudit is maintained by TXBoard under `integrations/AccessAudit/`; TX-Node only implements the optional audit reporter/client that interoperates with that plugin. Plugin absence must not affect the core node/control-plane protocol.
 
+## Product-path freeze
+
+The canonical product path is now:
+
+```text
+TXBoard
+  -> Machine mode
+  -> TX-Node
+  -> sing-box / Xray
+```
+
+Local/standalone mode and legacy single-node/systemd management remain supported compatibility surfaces, but they are frozen for feature expansion. They may receive bug fixes, security fixes and compatibility repairs; new product features should target the canonical Machine path first.
+
+This is a maintenance-policy change, not a removal. Any future removal requires an explicit breaking release and migration plan.
+
+See [Runtime Boundary](./runtime-boundary.md).
+
 ## Compatibility boundary
 
 The following are compatibility surfaces, not branding leftovers:
