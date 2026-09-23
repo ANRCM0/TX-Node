@@ -20,10 +20,12 @@ type fakeKernel struct {
 	running bool
 
 	startErr  error
+	reloadErr error
 	updateErr error
 	addErr    error
 
 	startCalls  int
+	reloadCalls int
 	updateCalls int
 	addCalls    int
 	removeCalls       int
@@ -53,6 +55,11 @@ func (f *fakeKernel) Stop()           { f.running = false }
 func (f *fakeKernel) IsRunning() bool { return f.running }
 func (f *fakeKernel) Reload(nodeConfig *model.NodeSpec, users []model.UserSpec, tls kernel.TLSCert) error {
 	_, _, _ = nodeConfig, users, tls
+	f.reloadCalls++
+	if f.reloadErr != nil {
+		return f.reloadErr
+	}
+	f.running = true
 	return nil
 }
 func (f *fakeKernel) AddUsers(users []model.UserSpec) (int, error) {
