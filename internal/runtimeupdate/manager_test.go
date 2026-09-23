@@ -2,6 +2,7 @@ package runtimeupdate
 
 import (
 	"os"
+	"strconv"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -80,7 +81,7 @@ request_id=mup_test-02
 target=latest
 status=rolled_back
 updated_at=" +
-		strconvFormat(now) + "
+		strconv.FormatInt(now, 10) + "
 message=previous image restored
 "
 	if err := os.WriteFile(statusPath, []byte(body), 0o600); err != nil {
@@ -100,7 +101,7 @@ message=previous image restored
 request_id=mup_test-03
 target=latest
 status=exec
-updated_at="+strconvFormat(now)+"
+updated_at="+strconv.FormatInt(now, 10)+"
 ",
 	), 0o600); err != nil {
 		t.Fatal(err)
@@ -135,6 +136,3 @@ target=v2.3.0
 	}
 }
 
-func strconvFormat(value int64) string {
-	return fmt.Sprintf("%d", value)
-}
