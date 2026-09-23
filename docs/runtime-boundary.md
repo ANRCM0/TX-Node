@@ -235,9 +235,24 @@ ControlPlane users
 
 The controller owns only desired user state and derived limiter indexes. The proxy kernel remains the authoritative executor of applied users, tracked separately by `Service.appliedState`.
 
+4. Report delivery lifecycle extracted into `internal/reporting.Controller`:
+
+```text
+Service report adapter
+      -> prepares runtime payload
+      -> reporting.Controller
+           -> overlap prevention
+           -> retry/backoff
+           -> async/sync Sink.Report
+      -> Service callback
+           -> restore flushed traffic/devices on async failure
+           -> success logging
+```
+
+The reporting controller owns delivery mechanics only. Runtime metric collection and tracker flush/restore stay behind the Service adapter so reporting cannot mutate unrelated data-plane state.
+
 Remaining S2 slices are intentionally separate PRs:
 
-- reporting controller;
 - kernel lifecycle coordinator;
 - certificate coordination adapter.
 
