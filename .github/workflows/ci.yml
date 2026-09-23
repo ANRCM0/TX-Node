@@ -38,6 +38,72 @@ jobs:
       - name: Run tests
         run: make test
 
+      - name: Enforce legacy retirement boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -d cmd/xbctl
+          legacy_xboard_artifact="xboard-node""-linux-"
+          legacy_xbctl_artifact="xbctl""-linux-"
+          legacy_docker_alias="xboard-node"":latest"
+          if grep -Fq "$legacy_xboard_artifact" Makefile .github/workflows/ci.yml; then
+            echo "legacy xboard-node release artifact was reintroduced" >&2
+            exit 1
+          fi
+          if grep -Fq "$legacy_xbctl_artifact" Makefile .github/workflows/ci.yml; then
+            echo "legacy xbctl release artifact was reintroduced" >&2
+            exit 1
+          fi
+          if grep -Fq "$legacy_docker_alias" Makefile Dockerfile; then
+            echo "legacy xboard-node Docker alias was reintroduced" >&2
+            exit 1
+          fi
+          grep -Fq 'CMD ["-c", "/etc/txnode/config.yml"]' Dockerfile
+
+  container-config-path:
+    name: Container config path compatibility
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build runtime image
+        run: docker build -t tx-node:config-path-ci .
+
+      - name: Verify canonical image command
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(docker image inspect tx-node:config-path-ci --format '{{json .Config.Cmd}}')" = '["-c","/etc/txnode/config.yml"]'
+
+      - name: Verify old Compose mount fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          legacy_cfg="$(mktemp)"
+          printf 'invalid: [\n' > "$legacy_cfg"
+          output="$(docker run --rm -v "$legacy_cfg:/etc/xboard-node/config.yml:ro" tx-node:config-path-ci 2>&1 || true)"
+          printf '%s\n' "$output"
+          grep -Fq 'using legacy container config path /etc/xboard-node/config.yml' <<<"$output"
+
+      - name: Verify canonical path wins
+        shell: bash
+        run: |
+          set -euo pipefail
+          canonical_cfg="$(mktemp)"
+          legacy_cfg="$(mktemp)"
+          printf 'invalid: [\n' > "$canonical_cfg"
+          printf 'invalid: [\n' > "$legacy_cfg"
+          output="$(docker run --rm \
+            -v "$canonical_cfg:/etc/txnode/config.yml:ro" \
+            -v "$legacy_cfg:/etc/xboard-node/config.yml:ro" \
+            tx-node:config-path-ci 2>&1 || true)"
+          printf '%s\n' "$output"
+          if grep -Fq 'using legacy container config path' <<<"$output"; then
+            echo "legacy fallback won despite canonical config being mounted" >&2
+            exit 1
+          fi
+
   runtime-stability:
     name: Runtime stability
     runs-on: ubuntu-latest
