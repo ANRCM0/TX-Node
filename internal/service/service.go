@@ -8,11 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"net"
-	"os"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +26,7 @@ import (
 	"github.com/PaiMonCai/TX-Node/internal/model"
 	"github.com/PaiMonCai/TX-Node/internal/monitor"
 	"github.com/PaiMonCai/TX-Node/internal/nlog"
+	"github.com/PaiMonCai/TX-Node/internal/nodeops"
 	"github.com/PaiMonCai/TX-Node/internal/tracker"
 )
 
@@ -82,11 +79,9 @@ type Service struct {
 	// metricsMu: lastUsers, lastConfig, wsClient, wsDisconnectAt (buildMetrics vs main loop).
 	metricsMu sync.RWMutex
 
-	// Agent Ops request IDs are cached so replaying a WebSocket request cannot
-	// repeat a non-idempotent action such as kernel.restart.
-	opsMu      sync.Mutex
-	opsResults map[string]controlplane.OpsResult
-	opsOrder   []string
+	// Typed Node Ops are isolated behind a narrow runtime adapter. Service owns
+	// orchestration; nodeops.Executor owns operation dispatch/replay protection.
+	ops *nodeops.Executor
 }
 
 // pullResult carries the outcome of an async pullViaAPI back to the main goroutine.
@@ -190,7 +185,7 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 		}
 	}
 
-	return &Service{
+	s := &Service{
 		cfg:          cfg,
 		source:       cp,
 		sink:         cp,
@@ -202,8 +197,9 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 		wsEvents:     make(chan controlplane.Event, 16),
 		wsStatusCh:   make(chan controlplane.StatusChange, 4),
 		pullResults:  make(chan pullResult, 1),
-		opsResults:   make(map[string]controlplane.OpsResult),
 	}
+	s.ops = nodeops.New(serviceOpsRuntime{service: s}, s.sendOpsResult)
+	return s
 }
 
 func (s *Service) Run(ctx context.Context) error {
@@ -632,337 +628,13 @@ func (s *Service) handleWSEvent(ctx context.Context, event controlplane.Event) {
 		}
 
 	case controlplane.EventOpsRequest:
-		if event.OpsRequest != nil {
-			s.handleOpsRequest(ctx, event.OpsRequest)
+		if event.OpsRequest != nil && s.ops != nil {
+			s.ops.Handle(ctx, event.OpsRequest)
 		}
 
 	default:
 		nlog.Core().Debug(fmt.Sprintf("unknown ws event: %v", event.Type))
 	}
-}
-
-func (s *Service) handleOpsRequest(ctx context.Context, request *controlplane.OpsRequest) {
-	if request == nil || request.RequestID == "" {
-		return
-	}
-	if cached, found := s.cachedOpsResult(request.RequestID); found {
-		s.sendOpsResult(cached)
-		return
-	}
-
-	ok := func(result map[string]interface{}) {
-		s.completeOpsResult(controlplane.OpsResult{
-			RequestID: request.RequestID,
-			Operation: request.Operation,
-			OK:        true,
-			Result:    result,
-		})
-	}
-	fail := func(code string, err error) {
-		message := ""
-		if err != nil {
-			message = err.Error()
-		}
-		s.completeOpsResult(controlplane.OpsResult{
-			RequestID: request.RequestID,
-			Operation: request.Operation,
-			OK:        false,
-			ErrorCode: code,
-			Message:   message,
-		})
-	}
-
-	s.metricsMu.RLock()
-	configSnapshot := s.lastConfig
-	usersSnapshot := append([]model.UserSpec(nil), s.lastUsers...)
-	s.metricsMu.RUnlock()
-
-	switch request.Operation {
-	case "ops.kernel.status":
-		ok(map[string]interface{}{
-			"kernel":  s.kernel.Name(),
-			"running": s.kernel.IsRunning(),
-		})
-
-	case "ops.kernel.restart":
-		if configSnapshot == nil {
-			fail("config_unavailable", fmt.Errorf("node config is not available"))
-			return
-		}
-		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), configSnapshot, s.cert.TLSCert()); err != nil {
-			fail("config_invalid", err)
-			return
-		}
-		if !s.startKernel(configSnapshot, usersSnapshot) {
-			fail("kernel_restart_failed", fmt.Errorf("kernel restart failed"))
-			return
-		}
-		ok(map[string]interface{}{
-			"kernel":         s.kernel.Name(),
-			"kernel_running": s.kernel.IsRunning(),
-		})
-
-	case "ops.config.validate":
-		if configSnapshot == nil {
-			fail("config_unavailable", fmt.Errorf("node config is not available"))
-			return
-		}
-		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), configSnapshot, s.cert.TLSCert()); err != nil {
-			fail("config_invalid", err)
-			return
-		}
-		ok(map[string]interface{}{"valid": true})
-
-	case "ops.config.reload":
-		if configSnapshot == nil {
-			fail("config_unavailable", fmt.Errorf("node config is not available"))
-			return
-		}
-		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), configSnapshot, s.cert.TLSCert()); err != nil {
-			fail("config_invalid", err)
-			return
-		}
-		if err := s.kernel.Reload(configSnapshot, usersSnapshot, s.cert.TLSCert()); err != nil {
-			fail("config_reload_failed", err)
-			return
-		}
-		s.appliedState.Config = configSnapshot
-		s.appliedState.Users = usersSnapshot
-		ok(map[string]interface{}{
-			"reloaded":       true,
-			"kernel_running": s.kernel.IsRunning(),
-		})
-
-	case "ops.system.info":
-		metrics := s.wsMetrics()
-		metrics["kernel"] = s.kernel.Name()
-		ok(metrics)
-
-	case "ops.network.dns":
-		target, err := opsNetworkTarget(request.Args)
-		if err != nil {
-			fail("invalid_target", err)
-			return
-		}
-		opCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		addresses, err := net.DefaultResolver.LookupHost(opCtx, target)
-		cancel()
-		if err != nil {
-			fail("dns_lookup_failed", err)
-			return
-		}
-		if len(addresses) > 16 {
-			addresses = addresses[:16]
-		}
-		ok(map[string]interface{}{"target": target, "addresses": addresses})
-
-	case "ops.logs.tail":
-		result, err := s.tailApplicationLog(request.Args)
-		if err != nil {
-			fail("log_tail_failed", err)
-			return
-		}
-		ok(result)
-
-	case "ops.network.port_check":
-		target, err := opsNetworkTarget(request.Args)
-		if err != nil {
-			fail("invalid_target", err)
-			return
-		}
-		port, err := opsPort(request.Args)
-		if err != nil {
-			fail("invalid_port", err)
-			return
-		}
-		dialer := net.Dialer{Timeout: 5 * time.Second}
-		opCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		conn, err := dialer.DialContext(opCtx, "tcp", net.JoinHostPort(target, strconv.Itoa(port)))
-		cancel()
-		if err != nil {
-			fail("port_check_failed", err)
-			return
-		}
-		_ = conn.Close()
-		ok(map[string]interface{}{"target": target, "port": port, "reachable": true})
-
-	default:
-		fail("unsupported_operation", fmt.Errorf("unsupported operation: %s", request.Operation))
-	}
-}
-
-const maxOpsResultCache = 128
-
-func (s *Service) cachedOpsResult(requestID string) (controlplane.OpsResult, bool) {
-	s.opsMu.Lock()
-	defer s.opsMu.Unlock()
-	result, ok := s.opsResults[requestID]
-	return result, ok
-}
-
-func (s *Service) completeOpsResult(result controlplane.OpsResult) {
-	s.opsMu.Lock()
-	if existing, ok := s.opsResults[result.RequestID]; ok {
-		result = existing
-	} else {
-		if s.opsResults == nil {
-			s.opsResults = make(map[string]controlplane.OpsResult)
-		}
-		s.opsResults[result.RequestID] = result
-		s.opsOrder = append(s.opsOrder, result.RequestID)
-		if len(s.opsOrder) > maxOpsResultCache {
-			oldest := s.opsOrder[0]
-			s.opsOrder = s.opsOrder[1:]
-			delete(s.opsResults, oldest)
-		}
-	}
-	s.opsMu.Unlock()
-	s.sendOpsResult(result)
-}
-
-func (s *Service) sendOpsResult(result controlplane.OpsResult) {
-	sender, ok := s.wsClient.(controlplane.OpsResultSender)
-	if !ok || sender == nil {
-		nlog.Core().Warn("cannot send ops result: push client has no ops result channel",
-			"request_id", result.RequestID, "operation", result.Operation)
-		return
-	}
-	sender.SendOpsResult(result)
-}
-
-var opsAuthorizationPattern = regexp.MustCompile(`(?i)(authorization:\s*bearer\s+)[^\s]+`)
-var opsSecretPattern = regexp.MustCompile(`(?i)("?(token|password|passwd|secret|private_key|api_key|credential|uuid)"?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)`)
-
-func (s *Service) tailApplicationLog(args map[string]interface{}) (map[string]interface{}, error) {
-	source := strings.ToLower(strings.TrimSpace(fmt.Sprint(args["source"])))
-	if source == "" || source == "<nil>" {
-		source = "application"
-	}
-	if source != "application" {
-		return nil, fmt.Errorf("unsupported log source")
-	}
-
-	output := strings.TrimSpace(s.cfg.Log.Output)
-	if output == "" || output == "stdout" || output == "stderr" {
-		return nil, fmt.Errorf("application log is not configured as a file")
-	}
-
-	lines, err := opsBoundedInt(args, "lines", 100, 1, 200)
-	if err != nil {
-		return nil, err
-	}
-	maxBytes, err := opsBoundedInt(args, "max_bytes", 65536, 1024, 65536)
-	if err != nil {
-		return nil, err
-	}
-
-	content, truncated, err := tailLogFile(output, lines, maxBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	return map[string]interface{}{
-		"source":    "application",
-		"lines":     lines,
-		"max_bytes": maxBytes,
-		"truncated": truncated,
-		"content":   redactOpsLog(content),
-	}, nil
-}
-
-func tailLogFile(path string, lines, maxBytes int) (string, bool, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", false, fmt.Errorf("open application log: %w", err)
-	}
-	defer file.Close()
-
-	stat, err := file.Stat()
-	if err != nil {
-		return "", false, fmt.Errorf("stat application log: %w", err)
-	}
-
-	window := int64(maxBytes * 4)
-	if window < 4096 {
-		window = 4096
-	}
-	if window > 262144 {
-		window = 262144
-	}
-
-	start := stat.Size() - window
-	truncated := start > 0
-	if start < 0 {
-		start = 0
-	}
-	if _, err := file.Seek(start, io.SeekStart); err != nil {
-		return "", false, fmt.Errorf("seek application log: %w", err)
-	}
-
-	data, err := io.ReadAll(io.LimitReader(file, window))
-	if err != nil {
-		return "", false, fmt.Errorf("read application log: %w", err)
-	}
-
-	parts := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
-	if start > 0 && len(parts) > 0 {
-		parts = parts[1:]
-	}
-	for len(parts) > 0 && parts[len(parts)-1] == "" {
-		parts = parts[:len(parts)-1]
-	}
-	if len(parts) > lines {
-		parts = parts[len(parts)-lines:]
-		truncated = true
-	}
-
-	content := strings.Join(parts, "\n")
-	if len(content) > maxBytes {
-		content = content[len(content)-maxBytes:]
-		if idx := strings.IndexByte(content, '\n'); idx >= 0 {
-			content = content[idx+1:]
-		}
-		truncated = true
-	}
-
-	return content, truncated, nil
-}
-
-func redactOpsLog(content string) string {
-	content = opsAuthorizationPattern.ReplaceAllString(content, "$1[REDACTED]")
-	return opsSecretPattern.ReplaceAllString(content, "$1[REDACTED]")
-}
-
-func opsBoundedInt(args map[string]interface{}, key string, fallback, minValue, maxValue int) (int, error) {
-	raw, ok := args[key]
-	if !ok || raw == nil {
-		return fallback, nil
-	}
-	value, err := strconv.Atoi(strings.TrimSpace(fmt.Sprint(raw)))
-	if err != nil || value < minValue || value > maxValue {
-		return 0, fmt.Errorf("%s must be between %d and %d", key, minValue, maxValue)
-	}
-	return value, nil
-}
-
-func opsNetworkTarget(args map[string]interface{}) (string, error) {
-	target := strings.TrimSpace(fmt.Sprint(args["target"]))
-	if target == "" || target == "<nil>" {
-		return "", fmt.Errorf("target is required")
-	}
-	if len(target) > 253 || strings.ContainsAny(target, " /\\@?#\t\r\n") {
-		return "", fmt.Errorf("target has invalid characters")
-	}
-	return target, nil
-}
-
-func opsPort(args map[string]interface{}) (int, error) {
-	raw := strings.TrimSpace(fmt.Sprint(args["port"]))
-	port, err := strconv.Atoi(raw)
-	if err != nil || port < 1 || port > 65535 {
-		return 0, fmt.Errorf("port must be between 1 and 65535")
-	}
-	return port, nil
 }
 
 // pullViaAPIAsync fetches config/users from the panel API in a background
