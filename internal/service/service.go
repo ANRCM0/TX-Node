@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/PaiMonCai/TX-Node/internal/audit"
-	"github.com/PaiMonCai/TX-Node/internal/cert"
 	"github.com/PaiMonCai/TX-Node/internal/cert/dnsproviders"
+	"github.com/PaiMonCai/TX-Node/internal/certcoord"
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/controlplane"
 	"github.com/PaiMonCai/TX-Node/internal/kernel"
@@ -38,7 +38,7 @@ type Service struct {
 	tracker      *tracker.Tracker
 	limiter      *limiter.Limiter
 	speedTracker *limiter.SpeedTracker
-	cert         *cert.Manager
+	certs        *certcoord.Coordinator
 
 	lastConfig *model.NodeSpec
 	users      *userstate.Controller
@@ -78,8 +78,6 @@ func NewWithControlPlane(cfg *config.Config, cp controlplane.ControlPlane) *Serv
 }
 
 func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
-	certMgr := cert.NewManager(cfg.Cert)
-
 	var k kernel.Kernel
 	switch cfg.Kernel.Type {
 	case "singbox":
@@ -135,7 +133,7 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 		tracker:      tracker.New(),
 		limiter:      l,
 		speedTracker: st,
-		cert:         certMgr,
+		certs:        certcoord.New(cfg.Cert),
 		users:        userstate.New(l, st),
 		syncer:       nodesync.New(cp),
 		push:         pushsync.New(cp),
@@ -147,10 +145,10 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 
 func (s *Service) Run(ctx context.Context) error {
 	// Start cert manager (handles auto-TLS or manual cert verification)
-	if err := s.cert.Start(ctx); err != nil {
+	if err := s.certs.Start(ctx); err != nil {
 		return fmt.Errorf("cert manager: %w", err)
 	}
-	defer s.cert.Stop()
+	defer s.certs.Stop()
 
 	// Handshake: get WS config + initial data in one call
 	if err := s.initialSetup(ctx); err != nil {
@@ -268,7 +266,7 @@ func (s *Service) initialSetup(ctx context.Context) error {
 		}
 		return fmt.Errorf("initial config is nil")
 	}
-	if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), bootstrap.Config, s.cert.TLSCert()); err != nil {
+	if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), bootstrap.Config, s.certs.TLSCert()); err != nil {
 		return err
 	}
 
@@ -296,62 +294,6 @@ func (s *Service) initialSetup(ctx context.Context) error {
 	}
 	s.markMailboxReadyAndDrain(ctx)
 	return nil
-}
-
-// applyRemoteOverrides updates service-level settings (log level, cert config)
-// from the panel's NodeConfig. Returns true if cert paths changed (kernel restart needed).
-func (s *Service) applyRemoteOverrides(ctx context.Context, nc *model.NodeSpec) bool {
-	if nc == nil {
-		return false
-	}
-
-	// Dynamic Log Level (Kernel)
-	if nc.KernelLogLevel != "" && nc.KernelLogLevel != s.cfg.Kernel.LogLevel {
-		nlog.Core().Info("cert: kernel log level override", "old", s.cfg.Kernel.LogLevel, "new", nc.KernelLogLevel)
-		s.cfg.Kernel.LogLevel = nc.KernelLogLevel
-	}
-
-	// Certificate configuration from panel (panel-first: takes precedence over local config)
-	if nc.CertConfig != nil {
-		return s.applyNodeCert(ctx, nc.CertConfig)
-	}
-
-	// Legacy fields (deprecated: prefer cert_config)
-	if nc.AutoTLS != s.cfg.Cert.AutoTLS {
-		nlog.Core().Info("cert: auto_tls policy changed (deprecated field)", "new", nc.AutoTLS)
-		s.cfg.Cert.AutoTLS = nc.AutoTLS
-	}
-	if nc.Domain != "" && nc.Domain != s.cfg.Cert.Domain {
-		s.cfg.Cert.Domain = nc.Domain
-	}
-
-	return false
-}
-
-// applyPanelCert converts a panel CertConfig into the local config format and
-// reconfigures the cert manager. Reports whether cert paths changed.
-func (s *Service) applyNodeCert(ctx context.Context, newCfg *config.CertConfig) bool {
-	if newCfg == nil {
-		return false
-	}
-	cfgCopy := *newCfg
-	cfgCopy.CertDir = s.cfg.Cert.CertDir
-
-	changed, err := s.cert.Reconfigure(ctx, cfgCopy)
-	if err != nil {
-		nlog.Core().Error("failed to apply runtime cert config", "mode", cfgCopy.CertMode, "error", err)
-		return false
-	}
-	s.cfg.Cert = cfgCopy
-	if changed {
-		msg := fmt.Sprintf("cert: material updated, has_cert=%v", s.cert.HasCert())
-		if s.nodeLog != nil {
-			s.nodeLog.Info(msg)
-		} else {
-			nlog.Core().Info(msg)
-		}
-	}
-	return changed
 }
 
 func (s *Service) markMailboxReadyAndDrain(ctx context.Context) {
@@ -410,7 +352,7 @@ func (s *Service) handleWSEvent(ctx context.Context, event controlplane.Event) {
 		if newConfigHash == s.lastConfigHash {
 			return
 		}
-		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), event.Config, s.cert.TLSCert()); err != nil {
+		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), event.Config, s.certs.TLSCert()); err != nil {
 			nlog.Core().Warn("ws config validation failed, ignoring update", "error", err)
 			return
 		}
