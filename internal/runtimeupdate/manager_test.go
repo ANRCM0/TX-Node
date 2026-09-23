@@ -18,7 +18,7 @@ func TestManagerAvailabilityAndRequest(t *testing.T) {
 	}
 
 	if err := os.WriteFile(filepath.Join(dir, "capabilities.env"), []byte(
-		"schema=1\\nupdater_available=true\\ntarget=latest\\n",
+		"schema=1\nupdater_available=true\ntarget=latest\n",
 	), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestManagerAvailabilityAndRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(body) != "schema=1\\nrequest_id=mup_test-01\\ntarget=latest\\n" {
+	if string(body) != "schema=1\nrequest_id=mup_test-01\ntarget=latest\n" {
 		t.Fatalf("unexpected request body: %q", body)
 	}
 
@@ -70,8 +70,8 @@ func TestLastStatusIsBoundedAndValidated(t *testing.T) {
 	statusPath := filepath.Join(dir, "status.env")
 	now := time.Now().Unix()
 
-	body := "schema=1\\nrequest_id=mup_test-02\\ntarget=latest\\nstatus=rolled_back\\nupdated_at=" +
-		strconv.FormatInt(now, 10) + "\\nmessage=previous image restored\\n"
+	body := "schema=1\nrequest_id=mup_test-02\ntarget=latest\nstatus=rolled_back\nupdated_at=" +
+		strconv.FormatInt(now, 10) + "\nmessage=previous image restored\n"
 	if err := os.WriteFile(statusPath, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -85,8 +85,8 @@ func TestLastStatusIsBoundedAndValidated(t *testing.T) {
 	}
 
 	if err := os.WriteFile(statusPath, []byte(
-		"schema=1\\nrequest_id=mup_test-03\\ntarget=latest\\nstatus=exec\\nupdated_at="+
-			strconv.FormatInt(now, 10)+"\\n",
+		"schema=1\nrequest_id=mup_test-03\ntarget=latest\nstatus=exec\nupdated_at="+
+			strconv.FormatInt(now, 10)+"\n",
 	), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestCapabilityRejectsUnknownOrOversizedData(t *testing.T) {
 	path := filepath.Join(dir, "capabilities.env")
 
 	if err := os.WriteFile(path, []byte(
-		"schema=1\\nupdater_available=true\\ntarget=v2.3.0\\n",
+		"schema=1\nupdater_available=true\ntarget=v2.3.0\n",
 	), 0o600); err != nil {
 		t.Fatal(err)
 	}
