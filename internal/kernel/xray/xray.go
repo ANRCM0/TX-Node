@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,8 +29,8 @@ import (
 	_ "github.com/xtls/xray-core/main/distro/all"
 
 	"github.com/PaiMonCai/TX-Node/internal/config"
+	"github.com/PaiMonCai/TX-Node/internal/geoassets"
 	"github.com/PaiMonCai/TX-Node/internal/kernel"
-	"github.com/PaiMonCai/TX-Node/internal/kernel/geodata"
 	"github.com/PaiMonCai/TX-Node/internal/nlog"
 	"github.com/PaiMonCai/TX-Node/internal/model"
 )
@@ -53,7 +52,8 @@ const (
 //   - instance.Start() and instance.Close() run OUTSIDE the lock.
 //   - running (atomic) gates fast-path checks in IsRunning / GetConnections.
 type Xray struct {
-	cfg config.KernelConfig
+	cfg       config.KernelConfig
+	geoAssets *geoassets.Coordinator
 
 	// mu protects instance, limitDispatcher, users, protocol, inboundTag,
 	// lastKernelHash, and cumTraffic. Never held during slow I/O.
@@ -77,6 +77,7 @@ type Xray struct {
 func New(cfg config.KernelConfig) *Xray {
 	return &Xray{
 		cfg:        cfg,
+		geoAssets:  geoassets.New(),
 		cumTraffic: make(map[int][2]int64),
 	}
 }
@@ -116,7 +117,7 @@ func (x *Xray) Protocols() []string {
 //	Phase 5 – RecycleOld: close old in background    (non-blocking)
 func (x *Xray) Start(nodeConfig *model.NodeSpec, users []model.UserSpec, tls kernel.TLSCert) error {
 	// ── Phase 1: Build config (no shared state) ─────────────────────────
-	x.ensureGeoData(nodeConfig)
+	x.prepareGeoAssets(nodeConfig)
 
 	data, err := marshalConfig(x.cfg, nodeConfig, users, tls)
 	if err != nil {
@@ -627,17 +628,15 @@ func hexEncode(dst, src []byte) {
 	}
 }
 
-// ensureGeoData downloads geo databases when routes reference geoip/geosite.
-func (x *Xray) ensureGeoData(nc *model.NodeSpec) {
-	needIP, needSite := kernel.NeedsGeoIP(nc.Routes), kernel.NeedsGeoSite(nc.Routes)
-	if !needIP && !needSite {
+// prepareGeoAssets delegates optional geo-data acquisition/preparation to the
+// S3 geoassets coordinator. Xray still owns route compilation and execution.
+func (x *Xray) prepareGeoAssets(nc *model.NodeSpec) {
+	if x == nil || x.geoAssets == nil {
 		return
 	}
-	dir := x.cfg.GeoDataDir
-	if err := geodata.Ensure(dir, needIP, needSite, "xray"); err != nil {
+	if err := x.geoAssets.PrepareXray(x.cfg, nc); err != nil {
 		nlog.Core().Warn("geo database unavailable", "error", err)
 	}
-	os.Setenv("XRAY_LOCATION_ASSET", dir)
 }
 
 // marshalConfig builds the xray JSON config and returns the raw bytes.

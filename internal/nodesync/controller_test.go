@@ -119,14 +119,30 @@ func TestControllerSuppressesUnchangedConfigUnlessCertificateChanged(t *testing.
 	controller := New(source)
 	hash := ConfigHash(cfg)
 
-	controller.Poll(context.Background(), hash, false)
-	result := <-controller.Results()
+	if !controller.Poll(context.Background(), hash, false) {
+		t.Fatal("first poll should start")
+	}
+	var result Result
+	select {
+	case result = <-controller.Results():
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for unchanged-config poll")
+	}
 	if result.Config != nil {
 		t.Fatalf("unchanged config should be suppressed: %#v", result.Config)
 	}
 
-	controller.Poll(context.Background(), hash, true)
-	result = <-controller.Results()
+	// Receiving a completed result must guarantee that the controller is ready
+	// to schedule the next poll. This is the regression for the race where the
+	// buffered result was published before pullActive was cleared.
+	if !controller.Poll(context.Background(), hash, true) {
+		t.Fatal("second poll should start immediately after result delivery")
+	}
+	select {
+	case result = <-controller.Results():
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for certificate-renewal poll")
+	}
 	if result.Config == nil || !result.CertChanged {
 		t.Fatalf("certificate renewal must force config application: %#v", result)
 	}
