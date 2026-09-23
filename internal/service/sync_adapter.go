@@ -13,17 +13,17 @@ import (
 // independent nodesync.Controller. Poll concurrency, retry/backoff and snapshot
 // hashing stay outside the Service orchestrator.
 func (s *Service) schedulePoll(ctx context.Context) {
-	if s == nil || s.syncer == nil || s.cert == nil {
+	if s == nil || s.syncer == nil || s.certs == nil {
 		return
 	}
-	s.syncer.Poll(ctx, s.lastConfigHash, s.cert.CertRenewed())
+	s.syncer.Poll(ctx, s.lastConfigHash, s.certs.ConsumeRenewal())
 }
 
 func (s *Service) requestWSResync(ctx context.Context, reason string) {
-	if s == nil || s.syncer == nil || s.cert == nil {
+	if s == nil || s.syncer == nil || s.certs == nil {
 		return
 	}
-	if !s.syncer.RequestResync(ctx, s.lastConfigHash, s.cert.CertRenewed()) {
+	if !s.syncer.RequestResync(ctx, s.lastConfigHash, s.certs.ConsumeRenewal()) {
 		return
 	}
 
@@ -49,7 +49,7 @@ func (s *Service) applySyncResult(ctx context.Context, result nodesync.Result) {
 	}
 
 	if result.Config != nil {
-		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), result.Config, s.cert.TLSCert()); err != nil {
+		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), result.Config, s.certs.TLSCert()); err != nil {
 			nlog.Core().Warn("runtime config validation failed", "error", err)
 			result.Config = nil
 		} else {
