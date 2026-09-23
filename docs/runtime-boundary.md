@@ -172,18 +172,38 @@ A feature being useful on a server is not sufficient reason to add it to TX-Node
 
 ## 8. Simplification roadmap
 
-### S1 — boundary + Node Ops isolation
+### S1 — boundary + Node Ops isolation — complete
 
-- define this runtime boundary;
-- move typed Node Ops dispatch/replay/log/network logic out of the Service god-object;
-- preserve all Node Ops contracts and behavior;
-- freeze feature expansion of standalone/legacy management surfaces.
+Completed in the first simplification PR:
 
-### S2 — Service decomposition
+- defined this runtime boundary;
+- moved typed Node Ops dispatch/replay/log/network logic out of the Service god-object;
+- preserved all Node Ops contracts and behavior;
+- froze feature expansion of standalone/legacy management surfaces.
 
-Split Service orchestration by responsibility without changing contracts:
+### S2 — Service decomposition — in progress
 
-- synchronization controller;
+S2 decomposes Service orchestration by responsibility without changing contracts.
+
+The first S2 slice extracts REST snapshot polling into `internal/nodesync.Controller`:
+
+```text
+Service
+  -> supplies current config hash + cert renewal fact
+  -> nodesync.Controller
+       -> overlap prevention
+       -> retry/backoff
+       -> ControlPlane Poll
+       -> config/user hashing
+       -> immutable Result
+  -> Service sync adapter validates/applies result
+```
+
+This keeps ControlPlane polling mechanics out of Service while leaving runtime mutation authoritative in Service.
+
+Remaining S2 slices are intentionally separate PRs:
+
+- push / WebSocket synchronization coordination;
 - user state controller;
 - reporting controller;
 - kernel lifecycle coordinator;
