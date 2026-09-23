@@ -1,10 +1,14 @@
-// Package dnsproviders is a registry of DNS providers usable for ACME DNS-01
-// challenges. Each provider is implemented as a separate file that registers
-// itself in init(); to add a new provider, drop a file in this package — no
-// changes are needed elsewhere.
+// Package dnsproviders is the built-in compatibility catalog of DNS providers
+// usable for ACME DNS-01 challenges.
 //
-// All providers wrap the libdns ecosystem (https://github.com/libdns) so they
-// plug directly into certmagic's DNSManager.
+// S3 runtime simplification freezes this catalog as a compatibility surface:
+// existing providers/aliases remain supported, but adding more providers is no
+// longer treated as automatic Core growth. New provider expansion should first
+// have an explicit optional-integration design.
+//
+// Each built-in provider remains a separate implementation file registered at
+// process initialization. All providers wrap the libdns ecosystem so they plug
+// directly into certmagic's DNSManager.
 package dnsproviders
 
 import (

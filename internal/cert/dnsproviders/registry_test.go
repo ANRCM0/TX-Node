@@ -88,3 +88,39 @@ func TestCanonicalNamesSorted(t *testing.T) {
 		}
 	}
 }
+
+
+func TestBuiltInCanonicalCatalogCompatibilitySet(t *testing.T) {
+	expected := []string{
+		"alidns",
+		"azure",
+		"bunny",
+		"cloudflare",
+		"desec",
+		"digitalocean",
+		"duckdns",
+		"gandi",
+		"godaddy",
+		"googleclouddns",
+		"hetzner",
+		"huaweicloud",
+		"linode",
+		"namecheap",
+		"namesilo",
+		"netlify",
+		"ovh",
+		"porkbun",
+		"route53",
+		"tencentcloud",
+		"vultr",
+	}
+	actual := CanonicalNames()
+	if len(actual) != len(expected) {
+		t.Fatalf("built-in DNS provider catalog changed: got %v want %v", actual, expected)
+	}
+	for i := range expected {
+		if actual[i] != expected[i] {
+			t.Fatalf("built-in DNS provider catalog changed at %d: got %v want %v", i, actual, expected)
+		}
+	}
+}
