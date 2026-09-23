@@ -1,0 +1,113 @@
+package service
+
+import (
+	"fmt"
+
+	"github.com/PaiMonCai/TX-Node/internal/controlplane"
+	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/PaiMonCai/TX-Node/internal/nlog"
+)
+
+// serviceOpsRuntime is the adapter between the large Service orchestrator and
+// the isolated typed Node Ops executor. It deliberately exposes only the
+// runtime facts/actions Node Ops is allowed to use.
+type serviceOpsRuntime struct {
+	service *Service
+}
+
+func (a serviceOpsRuntime) CurrentAvailable() bool {
+	if a.service == nil {
+		return false
+	}
+	a.service.metricsMu.RLock()
+	defer a.service.metricsMu.RUnlock()
+	return a.service.lastConfig != nil
+}
+
+func (a serviceOpsRuntime) ValidateCurrent() error {
+	configSnapshot, _ := a.snapshot()
+	if configSnapshot == nil {
+		return fmt.Errorf("node config is not available")
+	}
+	return validateNodeRuntime(
+		a.service.cfg,
+		a.service.kernel.Protocols(),
+		configSnapshot,
+		a.service.cert.TLSCert(),
+	)
+}
+
+func (a serviceOpsRuntime) RestartCurrent() error {
+	configSnapshot, usersSnapshot := a.snapshot()
+	if configSnapshot == nil {
+		return fmt.Errorf("node config is not available")
+	}
+	if !a.service.startKernel(configSnapshot, usersSnapshot) {
+		return fmt.Errorf("kernel restart failed")
+	}
+	return nil
+}
+
+func (a serviceOpsRuntime) ReloadCurrent() error {
+	configSnapshot, usersSnapshot := a.snapshot()
+	if configSnapshot == nil {
+		return fmt.Errorf("node config is not available")
+	}
+	if err := a.service.kernel.Reload(
+		configSnapshot,
+		usersSnapshot,
+		a.service.cert.TLSCert(),
+	); err != nil {
+		return err
+	}
+	a.service.appliedState.Config = configSnapshot
+	a.service.appliedState.Users = usersSnapshot
+	return nil
+}
+
+func (a serviceOpsRuntime) KernelStatus() (string, bool) {
+	if a.service == nil || a.service.kernel == nil {
+		return "", false
+	}
+	return a.service.kernel.Name(), a.service.kernel.IsRunning()
+}
+
+func (a serviceOpsRuntime) SystemInfo() map[string]interface{} {
+	if a.service == nil {
+		return map[string]interface{}{}
+	}
+	return a.service.wsMetrics()
+}
+
+func (a serviceOpsRuntime) ApplicationLogPath() string {
+	if a.service == nil || a.service.cfg == nil {
+		return ""
+	}
+	return a.service.cfg.Log.Output
+}
+
+func (a serviceOpsRuntime) snapshot() (*model.NodeSpec, []model.UserSpec) {
+	if a.service == nil {
+		return nil, nil
+	}
+	a.service.metricsMu.RLock()
+	defer a.service.metricsMu.RUnlock()
+	return a.service.lastConfig, append([]model.UserSpec(nil), a.service.lastUsers...)
+}
+
+func (s *Service) sendOpsResult(result controlplane.OpsResult) {
+	s.metricsMu.RLock()
+	client := s.wsClient
+	s.metricsMu.RUnlock()
+
+	sender, ok := client.(controlplane.OpsResultSender)
+	if !ok || sender == nil {
+		nlog.Core().Warn(
+			"cannot send ops result: push client has no ops result channel",
+			"request_id", result.RequestID,
+			"operation", result.Operation,
+		)
+		return
+	}
+	sender.SendOpsResult(result)
+}
