@@ -90,8 +90,8 @@ func TestPushAsyncFailureInvokesRestoreAndBackoff(t *testing.T) {
 	prepare := func() Batch {
 		return Batch{
 			Payload: controlplane.ReportPayload{
-				Traffic: map[int][2]int64{1: {10, 20}},
-				Alive:   map[int][]string{1: {"203.0.113.1"}},
+				Traffic: map[int][2]int64{1: [2]int64{10, 20}},
+				Alive:   map[int][]string{1: []string{"203.0.113.1"}},
 			},
 			TrafficCount: 1,
 		}
