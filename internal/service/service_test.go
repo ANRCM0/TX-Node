@@ -9,6 +9,7 @@ import (
 	"github.com/PaiMonCai/TX-Node/internal/cert"
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/kernel"
+	"github.com/PaiMonCai/TX-Node/internal/kernellifecycle"
 	"github.com/PaiMonCai/TX-Node/internal/limiter"
 	"github.com/PaiMonCai/TX-Node/internal/model"
 	"github.com/PaiMonCai/TX-Node/internal/userstate"
@@ -19,10 +20,12 @@ type fakeKernel struct {
 	running bool
 
 	startErr  error
+	reloadErr error
 	updateErr error
 	addErr    error
 
 	startCalls  int
+	reloadCalls int
 	updateCalls int
 	addCalls    int
 	removeCalls       int
@@ -52,6 +55,11 @@ func (f *fakeKernel) Stop()           { f.running = false }
 func (f *fakeKernel) IsRunning() bool { return f.running }
 func (f *fakeKernel) Reload(nodeConfig *model.NodeSpec, users []model.UserSpec, tls kernel.TLSCert) error {
 	_, _, _ = nodeConfig, users, tls
+	f.reloadCalls++
+	if f.reloadErr != nil {
+		return f.reloadErr
+	}
+	f.running = true
 	return nil
 }
 func (f *fakeKernel) AddUsers(users []model.UserSpec) (int, error) {
@@ -103,6 +111,7 @@ func newTestService(k *fakeKernel) *Service {
 	speedTracker := limiter.NewSpeedTracker(sharedLimiter)
 	s := &Service{
 		kernel:       k,
+		kernelLife:   kernellifecycle.New(k),
 		limiter:      sharedLimiter,
 		speedTracker: speedTracker,
 		cert:         cert.NewManager(config.CertConfig{}),

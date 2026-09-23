@@ -251,9 +251,22 @@ Service report adapter
 
 The reporting controller owns delivery mechanics only. Runtime metric collection and tracker flush/restore stay behind the Service adapter so reporting cannot mutate unrelated data-plane state.
 
-Remaining S2 slices are intentionally separate PRs:
+5. Disruptive kernel lifecycle extracted into `internal/kernellifecycle.Controller`:
 
-- kernel lifecycle coordinator;
+```text
+Service kernel adapter
+      -> kernellifecycle.Controller
+           -> Start
+           -> Reload
+           -> Stop / no-user stop
+           -> applied runtime bookkeeping
+      -> sing-box / Xray Kernel
+```
+
+The controller owns only disruptive lifecycle transitions and the last successfully applied full config/user snapshot. Atomic user add/remove/update remains in the existing kernel user API and is not duplicated.
+
+Remaining S2 slice:
+
 - certificate coordination adapter.
 
 The top-level Service remains orchestration only.
