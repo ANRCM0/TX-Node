@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PaiMonCai/TX-Node/internal/audit"
+	"github.com/PaiMonCai/TX-Node/internal/auditcoord"
 	"github.com/PaiMonCai/TX-Node/internal/cert/dnsproviders"
 	"github.com/PaiMonCai/TX-Node/internal/certcoord"
 	"github.com/PaiMonCai/TX-Node/internal/config"
@@ -92,37 +92,10 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 	l := limiter.New()
 	st := limiter.NewSpeedTracker(l)
 
-	// tx-node audit (sing-box kernel only): reuse the stock panel
-	// credentials so reports authenticate exactly like stock node reports.
-	// Multi-node / machine mode: cfg is already per-node expanded
-	// (ExpandNodes / ExpandMachineNode), so NodeID/MachineID/Token here
-	// are always correct for this instance.
-	if cfg.Audit.Enabled {
-		if sb, ok := k.(*singbox.SingBox); ok {
-			target, targetOK := controlplane.AuditTargetOf(cp)
-			if !targetOK {
-				nlog.Core().Warn("audit enabled but control plane does not expose audit target")
-			} else {
-				sb.SetAuditor(audit.New(audit.Config{
-					Enabled:       cfg.Audit.Enabled,
-					ReportAll:     cfg.Audit.ReportAll,
-					BatchMax:      cfg.Audit.BatchMax,
-					FlushInterval: cfg.Audit.FlushInterval,
-					RulesRefresh:  cfg.Audit.RulesRefresh,
-					QueueCap:      cfg.Audit.QueueCap,
-				}, audit.PanelAuth{
-					BaseURL:   target.BaseURL,
-					Token:     target.Token,
-					NodeID:    target.NodeID,
-					NodeType:  target.NodeType,
-					MachineID: target.MachineID,
-				}))
-			}
-		} else {
-			nlog.Core().Warn("audit enabled but kernel is not sing-box, skipping",
-				"kernel", cfg.Kernel.Type)
-		}
-	}
+	// Optional Access Audit remains an adapter over the existing audit.Reporter.
+	// Service does not own panel audit credentials, reporter construction, or
+	// kernel-specific attachment logic.
+	auditcoord.Attach(cfg.Audit, cp, k)
 
 	s := &Service{
 		cfg:          cfg,
