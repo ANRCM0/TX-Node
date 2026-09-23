@@ -344,11 +344,40 @@ This slice intentionally does not:
 New provider expansion should require an explicit optional-integration design
 instead of adding more provider code to Core by default.
 
-Remaining S3 review:
+Third S3 slice: geo / routing assets.
 
-- geo/routing assets.
+The review separates **route execution** from **optional asset acquisition**:
 
-Prefer adapters/delegation and remove nothing without a compatibility plan.
+- structured routes, custom outbounds and route compilation remain TX-Node Core
+  because they directly define Data Plane packet routing;
+- automatic GeoIP / GeoSite asset acquisition is optional host/runtime support
+  and is isolated behind `internal/geoassets.Coordinator`.
+
+```text
+Xray route requirement
+        -> geoassets.Coordinator
+             -> existing kernel/geodata downloader
+             -> compatibility XRAY_LOCATION_ASSET preparation
+        -> Xray route compilation / execution
+```
+
+The existing downloader remains authoritative for download URLs and filesystem
+behavior. Xray no longer owns HTTP/filesystem acquisition details directly.
+
+`XRAY_LOCATION_ASSET` remains process-scoped compatibility state in S3. The
+coordinator makes that side effect explicit without changing existing
+multi-instance semantics. Any future replacement with Installer-provisioned
+assets requires a separate contract and migration plan.
+
+S3 is complete. Review outcomes:
+
+1. Access Audit remains optional but attaches through `auditcoord`;
+2. the built-in ACME DNS-provider catalog remains supported but frozen behind
+   certificate coordination;
+3. route execution stays Core, while geo asset acquisition is isolated for
+   future delegation.
+
+No optional capability was removed in S3.
 
 ### S4 — legacy retirement proposal
 
