@@ -96,9 +96,10 @@ func (a serviceOpsRuntime) snapshot() (*model.NodeSpec, []model.UserSpec) {
 }
 
 func (s *Service) sendOpsResult(result controlplane.OpsResult) {
-	s.metricsMu.RLock()
-	client := s.wsClient
-	s.metricsMu.RUnlock()
+	var client controlplane.PushClient
+	if s != nil && s.push != nil {
+		client = s.push.Client()
+	}
 
 	sender, ok := client.(controlplane.OpsResultSender)
 	if !ok || sender == nil {
