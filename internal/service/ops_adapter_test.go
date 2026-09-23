@@ -15,7 +15,7 @@ func TestServiceOpsRuntimeAdapterUsesCurrentRuntimeWithoutOwningState(t *testing
 		Log:    config.LogConfig{Output: "/tmp/tx-node.log"},
 	}
 	s.lastConfig = &model.NodeSpec{Protocol: "vless"}
-	s.lastUsers = []model.UserSpec{{ID: 1, UUID: "user-1"}}
+	s.users.Replace([]model.UserSpec{{ID: 1, UUID: "user-1"}}, computeUserHash([]model.UserSpec{{ID: 1, UUID: "user-1"}}))
 
 	adapter := serviceOpsRuntime{service: s}
 
@@ -35,7 +35,7 @@ func TestServiceOpsRuntimeAdapterUsesCurrentRuntimeWithoutOwningState(t *testing
 		t.Fatalf("unexpected snapshot: %#v %#v", configSnapshot, usersSnapshot)
 	}
 	usersSnapshot[0].UUID = "mutated"
-	if s.lastUsers[0].UUID != "user-1" {
+	if s.users.Users()[0].UUID != "user-1" {
 		t.Fatal("ops adapter leaked mutable Service user slice")
 	}
 }
