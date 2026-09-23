@@ -134,7 +134,7 @@ AccessAudit 是**可选的面板插件**，其唯一源码位于 TXBoard：
 
 ## Xboard 兼容与项目来源
 
-TX-Node 保留 Xboard 面板协议及兼容配置字段。`xbctl` 与原生 `/etc/xboard-node` systemd 布局仅作为 legacy compatibility 保留；新的 Docker 运维入口是 `deploy.sh` / `txnode`。
+TX-Node 保留 Xboard 面板协议及兼容配置字段。`xbctl` 和 `xboard-node` 二进制兼容产物已从 TX-Node v2 主线移除。历史 native/systemd 安装仍可由 TX-Node-Installer 识别、迁移和清理；新的 Docker 运维入口统一为 `deploy.sh` / `txnode`。
 
 项目历史来源于 [cedar2025/Xboard-Node](https://github.com/cedar2025/Xboard-Node)。后续 TX-Node 版本独立维护和发布；上游修复仅按需审查、移植，不再整分支同步。详见 [`docs/standalone.md`](docs/standalone.md)。
 
