@@ -72,14 +72,16 @@ Protocol-specific behavior should stay behind adapters. New panel-specific branc
 
 ## 4. Compatibility surfaces
 
-The following exist for compatibility and are **frozen for feature expansion**:
+The following remain compatibility surfaces and are **frozen for feature expansion**:
 
 - Local / standalone ControlPlane;
 - legacy single-node Xboard deployment behavior;
-- `xboard-node` binary compatibility alias;
-- `xbctl`;
-- legacy native/systemd layout;
-- legacy `/etc/xboard-node` paths.
+- legacy native/systemd layout as an Installer migration source;
+- legacy `/etc/xboard-node` paths as migration input.
+
+The TX-Node v2 mainline no longer builds or publishes the historical
+`xboard-node` binary alias or `xbctl`. Host migration/cleanup responsibility
+belongs to TX-Node-Installer.
 
 Frozen means:
 
@@ -393,10 +395,12 @@ Current S4 sequence:
    the extracted controllers;
 3. **S4-C — freeze enforcement**: make accidental legacy feature growth visible
    without blocking compatibility/security fixes;
-4. **S4-D — versioned retirement proposal**: only after replacement, migration,
-   compatibility-window, usage-evidence and rollback gates are satisfied.
+4. **S4-D — versioned retirement**: the operator explicitly authorized removal
+   of the historical `xbctl` / `xboard-node` release surfaces after the
+   Installer gained migration and cleanup ownership.
 
-No legacy surface is authorized for removal by entering S4.
+S4-D is implemented incrementally: source/build/release aliases first, then
+container config-path migration with a bounded compatibility fallback.
 
 ## 9. Non-goals
 
