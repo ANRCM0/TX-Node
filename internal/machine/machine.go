@@ -9,12 +9,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PaiMonCai/TX-Node/internal/buildinfo"
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/controlplane"
 	"github.com/PaiMonCai/TX-Node/internal/model"
 	"github.com/PaiMonCai/TX-Node/internal/monitor"
 	"github.com/PaiMonCai/TX-Node/internal/nlog"
 	"github.com/PaiMonCai/TX-Node/internal/panel"
+	"github.com/PaiMonCai/TX-Node/internal/runtimeupdate"
 	"github.com/PaiMonCai/TX-Node/internal/service"
 )
 
@@ -66,6 +68,10 @@ type Orchestrator struct {
 
 	pullInterval time.Duration
 	pushInterval time.Duration
+
+	// runtimeUpdater is a bounded client for the Installer-owned host bridge.
+	// It never executes shell/Docker operations inside the TX-Node container.
+	runtimeUpdater *runtimeupdate.Manager
 }
 
 // nodeFailure is the backoff bookkeeping for one node.
@@ -117,7 +123,8 @@ func New(cfg *config.Config) *Orchestrator {
 		nodes:     make(map[int]*nodeHandle),
 		mailboxes: make(map[int]*controlplane.NodeMailbox),
 		statuses:  make(map[int]chan<- controlplane.StatusChange),
-		failures:  make(map[int]*nodeFailure),
+		failures:       make(map[int]*nodeFailure),
+		runtimeUpdater: runtimeupdate.New(runtimeupdate.DefaultDir),
 	}
 }
 
@@ -418,12 +425,34 @@ func (o *Orchestrator) rediscover(ctx context.Context) {
 
 func (o *Orchestrator) reportMachineStatus() {
 	s := monitor.Collect()
+	runtimeStatus := &panel.MachineRuntimeStatus{
+		Version:    buildinfo.Version,
+		BuildTime:  buildinfo.BuildTime,
+		Deployment: "unknown",
+	}
+	if o.runtimeUpdater != nil {
+		runtimeStatus.UpdaterAvailable = o.runtimeUpdater.Available()
+		if runtimeStatus.UpdaterAvailable {
+			runtimeStatus.Deployment = "docker"
+		}
+		if last := o.runtimeUpdater.LastStatus(); last != nil {
+			runtimeStatus.Update = &panel.MachineRuntimeUpdateStatus{
+				RequestID: last.RequestID,
+				Target:    last.Target,
+				Status:    last.Status,
+				UpdatedAt: last.UpdatedAt,
+				Message:   last.Message,
+			}
+		}
+	}
+
 	if err := o.client.ReportMachineStatus(
 		s.CPU,
 		[2]uint64{s.MemTotal, s.MemUsed},
 		[2]uint64{s.SwapTotal, s.SwapUsed},
 		[2]uint64{s.DiskTotal, s.DiskUsed},
 		s.NetInSpeed, s.NetOutSpeed,
+		runtimeStatus,
 	); err != nil {
 		nlog.Core().Warn("machine status report failed", "error", err)
 	}
@@ -470,6 +499,32 @@ func (o *Orchestrator) tryStartWS(ctx context.Context) {
 // onWSEvent routes a WS event to the correct node's channel.
 // sync.nodes is a machine-level event that triggers immediate rediscovery.
 func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
+	if event.Type == panel.WSEventOpsMachineRuntimeUpdate {
+		if event.MachineRuntimeUpdate == nil {
+			nlog.Core().Warn("machine runtime update missing typed payload")
+			return
+		}
+		if o.runtimeUpdater == nil {
+			nlog.Core().Warn("machine runtime updater unavailable")
+			return
+		}
+		if err := o.runtimeUpdater.Request(
+			event.MachineRuntimeUpdate.RequestID,
+			event.MachineRuntimeUpdate.Target,
+		); err != nil {
+			nlog.Core().Warn("machine runtime update request rejected",
+				"request_id", event.MachineRuntimeUpdate.RequestID,
+				"error", err,
+			)
+			return
+		}
+		nlog.Core().Info("machine runtime update accepted",
+			"request_id", event.MachineRuntimeUpdate.RequestID,
+			"target", event.MachineRuntimeUpdate.Target,
+		)
+		return
+	}
+
 	// sync.nodes is a machine-level event, not per-node
 	if event.Type == panel.WSEventSyncNodes {
 		nlog.Core().Info("machine received sync.nodes, triggering immediate rediscovery")
