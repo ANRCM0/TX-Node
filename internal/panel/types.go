@@ -81,6 +81,27 @@ type MachineBaseConfig struct {
 	PullInterval int `json:"pull_interval"`
 }
 
+// MachineRuntimeUpdateStatus is bounded Installer-owned update state reported
+// after the runtime reconnects. It is informational and never authorizes an
+// update by itself.
+type MachineRuntimeUpdateStatus struct {
+	RequestID string `json:"request_id"`
+	Target    string `json:"target"`
+	Status    string `json:"status"`
+	UpdatedAt int64  `json:"updated_at"`
+	Message   string `json:"message,omitempty"`
+}
+
+// MachineRuntimeStatus describes the currently running TX-Node process and
+// whether the Installer-owned host update bridge is available.
+type MachineRuntimeStatus struct {
+	Version          string                      `json:"version"`
+	BuildTime        string                      `json:"build_time"`
+	Deployment       string                      `json:"deployment"`
+	UpdaterAvailable bool                        `json:"updater_available"`
+	Update           *MachineRuntimeUpdateStatus `json:"update,omitempty"`
+}
+
 // NodeConfig is the response from GET /api/v1/server/UniProxy/config
 type NodeConfig struct {
 	// NodeID is populated in machine-mode WS events for routing.
