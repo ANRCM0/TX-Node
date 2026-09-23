@@ -33,7 +33,7 @@ func (a serviceOpsRuntime) ValidateCurrent() error {
 		a.service.cfg,
 		a.service.kernel.Protocols(),
 		configSnapshot,
-		a.service.cert.TLSCert(),
+		a.service.certs.TLSCert(),
 	)
 }
 
@@ -59,7 +59,7 @@ func (a serviceOpsRuntime) ReloadCurrent() error {
 	return a.service.kernelLife.Reload(
 		configSnapshot,
 		usersSnapshot,
-		a.service.cert.TLSCert(),
+		a.service.certs.TLSCert(),
 	)
 }
 
