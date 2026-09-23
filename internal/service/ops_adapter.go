@@ -91,8 +91,14 @@ func (a serviceOpsRuntime) snapshot() (*model.NodeSpec, []model.UserSpec) {
 		return nil, nil
 	}
 	a.service.metricsMu.RLock()
-	defer a.service.metricsMu.RUnlock()
-	return a.service.lastConfig, append([]model.UserSpec(nil), a.service.lastUsers...)
+	configSnapshot := a.service.lastConfig
+	a.service.metricsMu.RUnlock()
+
+	var usersSnapshot []model.UserSpec
+	if a.service.users != nil {
+		usersSnapshot = a.service.users.Users()
+	}
+	return configSnapshot, usersSnapshot
 }
 
 func (s *Service) sendOpsResult(result controlplane.OpsResult) {
