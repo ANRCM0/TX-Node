@@ -91,18 +91,6 @@ jobs:
           name: tx-node-${{ matrix.goos }}-${{ matrix.goarch }}
           path: tx-node-${{ matrix.goos }}-${{ matrix.goarch }}
 
-      - name: Upload legacy xboard-node artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: xboard-node-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: xboard-node-${{ matrix.goos }}-${{ matrix.goarch }}
-
-      - name: Upload xbctl artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: xbctl-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: xbctl-${{ matrix.goos }}-${{ matrix.goarch }}
-
   build-docker:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
@@ -169,7 +157,3 @@ jobs:
           files: |
             dist/tx-node-linux-amd64
             dist/tx-node-linux-arm64
-            dist/xboard-node-linux-amd64
-            dist/xboard-node-linux-arm64
-            dist/xbctl-linux-amd64
-            dist/xbctl-linux-arm64
