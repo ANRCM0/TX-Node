@@ -120,7 +120,10 @@ func (c *Controller) RequestResync(
 	if !c.resyncPending.CompareAndSwap(false, true) {
 		return false
 	}
-	c.Poll(ctx, currentConfigHash, certChanged)
+	if !c.Poll(ctx, currentConfigHash, certChanged) {
+		c.resyncPending.Store(false)
+		return false
+	}
 	return true
 }
 
