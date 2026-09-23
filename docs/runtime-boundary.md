@@ -317,9 +317,35 @@ This slice intentionally does not:
 - stop or redesign the reporter goroutine;
 - remove the embedded audit capability.
 
-Remaining S3 reviews stay separate:
+Second S3 slice: ACME / DNS provider catalog boundary.
 
-- ACME/DNS provider catalog;
+The existing built-in DNS providers remain supported, but the catalog is now a
+frozen compatibility surface rather than an open-ended Core growth point.
+
+```text
+Service runtime validation
+        -> certcoord.ValidateNodeConfig
+        -> built-in dnsproviders catalog
+        -> existing cert.Manager DNS-01 runtime
+```
+
+Core Service no longer imports or queries the DNS-provider registry directly.
+Provider-name validation stays with certificate coordination. The current
+provider set and aliases remain unchanged and are regression-tested as a
+compatibility set.
+
+This slice intentionally does not:
+
+- remove any built-in DNS provider;
+- change DNS credentials or `dns_env`;
+- change ACME behavior;
+- create a new plugin/runtime loader inside TX-Node.
+
+New provider expansion should require an explicit optional-integration design
+instead of adding more provider code to Core by default.
+
+Remaining S3 review:
+
 - geo/routing assets.
 
 Prefer adapters/delegation and remove nothing without a compatibility plan.
