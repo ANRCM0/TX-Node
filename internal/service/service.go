@@ -23,6 +23,7 @@ import (
 	"github.com/PaiMonCai/TX-Node/internal/nlog"
 	"github.com/PaiMonCai/TX-Node/internal/nodeops"
 	"github.com/PaiMonCai/TX-Node/internal/nodesync"
+	"github.com/PaiMonCai/TX-Node/internal/pushsync"
 	"github.com/PaiMonCai/TX-Node/internal/tracker"
 )
 
@@ -61,15 +62,12 @@ type Service struct {
 	pushActive atomic.Bool
 	syncer     *nodesync.Controller
 
-	wsClient         controlplane.PushClient        // Push client (nil if push is not enabled)
-	wsEvents         chan controlplane.Event        // receives data events from push transport
-	wsStatusCh       chan controlplane.StatusChange // receives push connectivity notifications
-	wsCancel         context.CancelFunc             // cancels the WS client goroutine
-	wsDisconnectAt   time.Time                      // when WS last disconnected (zero if connected)
+	push             *pushsync.Controller
 	machineMailbox   *controlplane.NodeMailbox
 	machineMailboxCh <-chan struct{}
 
-	// metricsMu: lastUsers, lastConfig, wsClient, wsDisconnectAt (buildMetrics vs main loop).
+	// metricsMu guards mutable runtime snapshots consumed by reporting/ops.
+	// Push transport state is owned independently by pushsync.Controller.
 	metricsMu sync.RWMutex
 
 	// Typed Node Ops are isolated behind a narrow runtime adapter. Service owns
@@ -178,9 +176,8 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 		limiter:      l,
 		speedTracker: st,
 		cert:         certMgr,
-		wsEvents:     make(chan controlplane.Event, 16),
-		wsStatusCh:   make(chan controlplane.StatusChange, 4),
 		syncer:       nodesync.New(cp),
+		push:         pushsync.New(cp),
 	}
 	s.ops = nodeops.New(serviceOpsRuntime{service: s}, s.sendOpsResult)
 	return s
@@ -218,7 +215,8 @@ func (s *Service) Run(ctx context.Context) error {
 	defer deviceReportTicker.Stop()
 	defer wsDiscoveryTicker.Stop()
 
-	s.startWSClient(ctx)
+	s.push.Start(ctx)
+	defer s.push.Stop()
 
 	for {
 		select {
@@ -239,7 +237,7 @@ func (s *Service) Run(ctx context.Context) error {
 			// WebSocket provides low-latency updates, while periodic REST polling
 			// provides eventual consistency if a push event is missed. Panel API
 			// ETags keep this reconciliation cheap when nothing changed.
-			if s.wsClient != nil && s.wsClient.IsConnected() {
+			if s.push != nil && s.push.Connected() {
 				nlog.Core().Debug("reconciling from API (ws connected)")
 			} else {
 				nlog.Core().Debug("polling from API (ws not connected)")
@@ -250,15 +248,15 @@ func (s *Service) Run(ctx context.Context) error {
 			s.applySyncResult(ctx, result)
 
 		case <-wsDiscoveryTicker.C:
-			s.wsDiscovery(ctx)
+			s.discoverPush(ctx)
 
-		case status := <-s.wsStatusCh:
-			s.handleWSStatus(ctx, status)
+		case status := <-s.push.Statuses():
+			s.handlePushStatus(ctx, status)
 
 		case <-s.machineMailboxCh:
 			s.drainMachineMailbox(ctx)
 
-		case event := <-s.wsEvents:
+		case event := <-s.push.Events():
 			s.handleWSEvent(ctx, event)
 		}
 	}
@@ -269,7 +267,7 @@ func (s *Service) initialSetup(ctx context.Context) error {
 	s.kernel.SetSpeedLimitFunc(s.speedTracker.GetLimiter)
 	s.kernel.SetDeviceLimitFunc(s.limiter.GetDeviceLimitByUUID)
 
-	bootstrap, err := s.source.Initial(ctx, s.wsMetrics, s.wsEvents, s.wsStatusCh)
+	bootstrap, err := s.source.Initial(ctx, s.wsMetrics, s.push.EventSink(), s.push.StatusSink())
 	if err != nil {
 		return err
 	}
@@ -293,7 +291,7 @@ func (s *Service) initialSetup(ctx context.Context) error {
 	}
 
 	if bootstrap.Push != nil {
-		s.wsClient = bootstrap.Push
+		s.push.SetBootstrapClient(bootstrap.Push)
 	}
 	s.machineMailbox = bootstrap.Mailbox
 	if s.machineMailbox != nil {
@@ -394,16 +392,6 @@ func (s *Service) applyNodeCert(ctx context.Context, newCfg *config.CertConfig) 
 	return changed
 }
 
-// startWSClient starts the push client goroutine if a client is configured.
-func (s *Service) startWSClient(ctx context.Context) {
-	if s.wsClient == nil {
-		return
-	}
-	wsCtx, wsCancel := context.WithCancel(ctx)
-	s.wsCancel = wsCancel
-	go s.wsClient.Run(wsCtx)
-}
-
 func (s *Service) markMailboxReadyAndDrain(ctx context.Context) {
 	if s.machineMailbox == nil {
 		return
@@ -447,101 +435,6 @@ func (s *Service) wsMetrics() map[string]interface{} {
 	m := s.buildMetrics(status)
 	m["kernel_status"] = s.kernel.IsRunning()
 	return m
-}
-
-// handleWSStatus reacts to WS connectivity changes.
-
-// - On disconnect: record timestamp, immediately REST poll.
-// - On reconnect: clear disconnect timestamp, REST poll to catch missed events.
-func (s *Service) handleWSStatus(ctx context.Context, status controlplane.StatusChange) {
-	if status.NeedsResync {
-		s.requestWSResync(ctx, "drop_detected")
-	}
-	if status.Connected {
-		s.metricsMu.Lock()
-		s.wsDisconnectAt = time.Time{}
-		s.metricsMu.Unlock()
-		// Use nodeLog if available, otherwise core
-		if s.nodeLog != nil {
-			s.nodeLog.Info("ws connected")
-		} else {
-			nlog.Core().Info("ws connected")
-		}
-		// After reconnect, proactively pull once to ensure we haven't missed
-		// any updates during the disconnection window.
-		s.schedulePoll(ctx)
-	} else {
-		s.metricsMu.Lock()
-		if s.wsDisconnectAt.IsZero() {
-			s.wsDisconnectAt = time.Now()
-		}
-		s.metricsMu.Unlock()
-		if s.nodeLog != nil {
-			s.nodeLog.Info("ws disconnected")
-		} else {
-			nlog.Core().Info("ws disconnected")
-		}
-		// Clear global device state on disconnect
-		s.kernel.ClearGlobalDevices()
-		s.schedulePoll(ctx)
-	}
-}
-
-// wsDiscovery periodically checks WS availability:
-//
-//  1. REST-only mode (wsClient == nil): Re-handshake to check if panel now has
-//     WS enabled. If so, create and start a WS client. This handles the case
-//     where WS was not enabled at startup but enabled later.
-//
-//  2. WS disconnected for >10 min: Re-handshake to check if WS config changed.
-//     If WS is now disabled, stop the WS client and switch to REST-only.
-//     If WS config changed (different URL/channel), restart with new config.
-func (s *Service) wsDiscovery(ctx context.Context) {
-	if !s.source.SupportsDiscovery() {
-		return
-	}
-
-	needsCheck := false
-	if s.wsClient == nil {
-		needsCheck = true
-		nlog.Core().Debug("push discovery: no push client, checking if control plane enabled push")
-	} else if !s.wsDisconnectAt.IsZero() && time.Since(s.wsDisconnectAt) > 10*time.Minute {
-		needsCheck = true
-		nlog.Core().Debug("push discovery: push disconnected for >10min, re-checking")
-	}
-	if !needsCheck {
-		return
-	}
-
-	pushClient, err := s.source.Discover(ctx, s.wsMetrics, s.wsEvents, s.wsStatusCh)
-	if err != nil {
-		nlog.Core().Debug("push discovery failed", "error", err)
-		return
-	}
-	if s.source.SupportsPolling() {
-		s.schedulePoll(ctx)
-	}
-
-	if pushClient != nil {
-		if s.wsClient == nil {
-			nlog.Core().Info("push discovery: control plane enabled push, creating client")
-			s.metricsMu.Lock()
-			s.wsClient = pushClient
-			s.wsDisconnectAt = time.Time{}
-			s.metricsMu.Unlock()
-			s.startWSClient(ctx)
-		}
-	} else if s.wsClient != nil {
-		nlog.Core().Info("push discovery: control plane disabled push, switching to polling")
-		if s.wsCancel != nil {
-			s.wsCancel()
-		}
-		s.metricsMu.Lock()
-		s.wsClient = nil
-		s.wsDisconnectAt = time.Time{}
-		s.metricsMu.Unlock()
-		s.wsCancel = nil
-	}
 }
 
 // handleWSEvent processes data events received via WebSocket
@@ -1021,7 +914,6 @@ func (s *Service) pushReportSync() {
 func (s *Service) buildMetrics(status monitor.Status) map[string]interface{} {
 	s.metricsMu.RLock()
 	lastUsers := s.lastUsers
-	wsClient := s.wsClient
 	s.metricsMu.RUnlock()
 
 	m := make(map[string]interface{})
@@ -1070,9 +962,11 @@ func (s *Service) buildMetrics(status monitor.Status) map[string]interface{} {
 		"failure": api.Failure,
 	}
 
-	// WebSocket status.
-	wsEnabled := wsClient != nil
-	wsConnected := wsEnabled && wsClient.IsConnected()
+	// WebSocket/push status is owned by pushsync.Controller.
+	wsEnabled, wsConnected := false, false
+	if s.push != nil {
+		wsEnabled, wsConnected = s.push.State()
+	}
 	m["ws"] = map[string]interface{}{
 		"enabled":   wsEnabled,
 		"connected": wsConnected,
@@ -1092,7 +986,11 @@ func (s *Service) buildMetrics(status monitor.Status) map[string]interface{} {
 
 // sendDeviceBatch reports local device snapshot to panel via WS.
 func (s *Service) sendDeviceBatch() {
-	if s.wsClient == nil || !s.wsClient.IsConnected() {
+	if s.push == nil {
+		return
+	}
+	client := s.push.Client()
+	if client == nil || !client.IsConnected() {
 		return
 	}
 
@@ -1102,7 +1000,7 @@ func (s *Service) sendDeviceBatch() {
 		nlog.Core().Debug("device snapshot unchanged, skipping")
 		return
 	}
-	s.sink.ReportDevices(s.wsClient, devices)
+	s.sink.ReportDevices(client, devices)
 	nlog.Core().Debug("device snapshot sent", "users", len(devices))
 }
 
