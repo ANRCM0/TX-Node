@@ -367,3 +367,49 @@ func TestWSClient_OpsRequestRejectsMissingRequestID(t *testing.T) {
 		t.Fatal("expected invalid ops request to be dropped")
 	}
 }
+
+
+func TestWSClient_MachineRuntimeUpdateEvent(t *testing.T) {
+	var received *WSEvent
+	ws := &WSClient{
+		onEvent: func(event WSEvent) {
+			copy := event
+			received = &copy
+		},
+	}
+
+	ws.handleMessage(wsMessage{
+		Event: WSEventOpsMachineRuntimeUpdate,
+		Data:  json.RawMessage(`{"request_id":"mup_01JTEST","target":"latest"}`),
+	})
+
+	if received == nil {
+		t.Fatal("expected machine runtime update event")
+	}
+	if received.MachineRuntimeUpdate == nil {
+		t.Fatal("expected typed MachineRuntimeUpdate payload")
+	}
+	if received.NodeID != 0 {
+		t.Fatalf("machine update must not be routed as node event, NodeID=%d", received.NodeID)
+	}
+	if received.MachineRuntimeUpdate.RequestID != "mup_01JTEST" {
+		t.Fatalf("RequestID = %q", received.MachineRuntimeUpdate.RequestID)
+	}
+	if received.MachineRuntimeUpdate.Target != "latest" {
+		t.Fatalf("Target = %q", received.MachineRuntimeUpdate.Target)
+	}
+}
+
+func TestWSClient_MachineRuntimeUpdateRejectsMissingRequestID(t *testing.T) {
+	called := false
+	ws := &WSClient{onEvent: func(WSEvent) { called = true }}
+
+	ws.handleMessage(wsMessage{
+		Event: WSEventOpsMachineRuntimeUpdate,
+		Data:  json.RawMessage(`{"target":"latest"}`),
+	})
+
+	if called {
+		t.Fatal("invalid machine update should be dropped")
+	}
+}
