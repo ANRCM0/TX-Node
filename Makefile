@@ -28,31 +28,7 @@ build-all: build-linux build-linux-arm64
 # Run tests
 test:
 	go test -v -race -count=1 ./internal/...
-	go test -run '^
-
-# Re-run the extracted runtime-controller suites under the race detector with
-# randomized test order. This is intentionally focused: it guards the lifecycle
-# boundaries introduced by Runtime Simplification S1-S3 without multiplying the
-# cost of every kernel/protocol test.
-test-runtime-stability:
-	go test -race -shuffle=on -count=10 -timeout=5m \
-		./internal/nodesync \
-		./internal/pushsync \
-		./internal/reporting \
-		./internal/userstate \
-		./internal/kernellifecycle \
-		./internal/certcoord \
-		./internal/auditcoord \
-		./internal/geoassets
-
-# Clean build artifacts
-clean:
-	rm -f tx-node xboard-node xbctl tx-node-linux-* xboard-node-linux-* xbctl-linux-*
-
-# Build Docker image
-docker:
-	docker build -t tx-node:$(VERSION) -t tx-node:latest -t xboard-node:latest .
- ./cmd/tx-node
+	go test ./cmd/tx-node
 
 # Re-run the extracted runtime-controller suites under the race detector with
 # randomized test order. This is intentionally focused: it guards the lifecycle
