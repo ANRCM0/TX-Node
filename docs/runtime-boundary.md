@@ -77,7 +77,14 @@ The following remain compatibility surfaces and are **frozen for feature expansi
 - Local / standalone ControlPlane;
 - legacy single-node Xboard deployment behavior;
 - legacy native/systemd layout as an Installer migration source;
-- legacy `/etc/xboard-node` paths as migration input.
+- legacy `/etc/xboard-node` host paths as Installer migration input;
+- legacy container `/etc/xboard-node/config.yml` only as a bounded startup fallback for already-generated Compose files.
+
+The canonical container config path is `/etc/txnode/config.yml`. When that
+canonical path is explicitly requested but absent, TX-Node may fall back to
+`/etc/xboard-node/config.yml` so an old Compose file can pull a new image
+without becoming unbootable. Custom `-c` paths never participate in this
+fallback.
 
 The TX-Node v2 mainline no longer builds or publishes the historical
 `xboard-node` binary alias or `xbctl`. Host migration/cleanup responsibility
@@ -393,14 +400,16 @@ Current S4 sequence:
    frozen-compatibility and migration-only surfaces; define retirement gates;
 2. **S4-B — post-S3 runtime stabilization**: strengthen race/lifecycle tests for
    the extracted controllers;
-3. **S4-C — freeze enforcement**: make accidental legacy feature growth visible
-   without blocking compatibility/security fixes;
+3. **S4-C — freeze enforcement — complete**: CI rejects reintroduction of the
+   retired `xbctl`, `xboard-node-linux-*` release artifacts and Docker alias;
 4. **S4-D — versioned retirement**: the operator explicitly authorized removal
    of the historical `xbctl` / `xboard-node` release surfaces after the
    Installer gained migration and cleanup ownership.
 
-S4-D is implemented incrementally: source/build/release aliases first, then
-container config-path migration with a bounded compatibility fallback.
+S4-D is implemented incrementally: source/build/release aliases are retired,
+and TX-Node now uses `/etc/txnode/config.yml` as the canonical container path
+with a bounded old-Compose fallback. The matching Installer change must generate
+the canonical mount before S4-D is marked complete.
 
 ## 9. Non-goals
 

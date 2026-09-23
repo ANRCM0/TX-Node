@@ -22,8 +22,13 @@ import (
 )
 
 
+const (
+	canonicalContainerConfigPath = "/etc/txnode/config.yml"
+	legacyContainerConfigPath    = "/etc/xboard-node/config.yml"
+)
+
 func main() {
-	configPath := flag.String("c", "config.yml", "config file path")
+	requestedConfigPath := flag.String("c", "config.yml", "config file path")
 	showVersion := flag.Bool("v", false, "show version")
 	flag.Parse()
 
@@ -32,7 +37,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	rootCfg, err := config.LoadRoot(*configPath)
+	configPath := resolveConfigPath(*requestedConfigPath)
+	rootCfg, err := config.LoadRoot(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
 		os.Exit(1)
@@ -48,7 +54,32 @@ func main() {
 	// Apply runtime memory tuning before anything else allocates.
 	applyRuntimeConfig(instances[0].Runtime)
 
-	runWithReload(rootCfg, *configPath)
+	runWithReload(rootCfg, configPath)
+}
+
+// resolveConfigPath keeps the canonical container path authoritative while
+// allowing already-generated Compose files to survive a new-image pull.
+// The fallback is deliberately narrow: it is considered only when the caller
+// requested the canonical container path and that file is absent.
+func resolveConfigPath(requested string) string {
+	resolved := resolveConfigPathWithFallback(requested, canonicalContainerConfigPath, legacyContainerConfigPath)
+	if resolved != requested {
+		fmt.Fprintf(os.Stderr, "warning: %s missing; using legacy container config path %s\n", requested, resolved)
+	}
+	return resolved
+}
+
+func resolveConfigPathWithFallback(requested, canonical, legacy string) string {
+	if requested != canonical {
+		return requested
+	}
+	if _, err := os.Stat(canonical); err == nil || !os.IsNotExist(err) {
+		return canonical
+	}
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return canonical
 }
 
 // runWithReload restarts all node services when the config file changes.

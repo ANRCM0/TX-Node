@@ -24,9 +24,11 @@ RUN apk add --no-cache ca-certificates tzdata
 
 COPY --from=builder /build/tx-node /usr/local/bin/tx-node
 
-RUN mkdir -p /etc/xboard-node
+# /etc/txnode is the canonical container config root. Keep the legacy
+# directory only for the bounded old-Compose bind-mount compatibility window.
+RUN mkdir -p /etc/txnode /etc/xboard-node
 
-WORKDIR /etc/xboard-node
+WORKDIR /etc/txnode
 
 # Config can be provided via file mount OR environment variables.
 # Env var mode (no config file needed):
@@ -48,4 +50,4 @@ WORKDIR /etc/xboard-node
 #   logLevel / LOG_LEVEL   → log level
 
 ENTRYPOINT ["tx-node"]
-CMD ["-c", "/etc/xboard-node/config.yml"]
+CMD ["-c", "/etc/txnode/config.yml"]
