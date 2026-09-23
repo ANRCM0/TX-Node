@@ -287,11 +287,38 @@ The next architecture stage is S3 optional-capability slimming. S3 must review e
 
 The top-level Service remains orchestration only.
 
-### S3 — optional capability slimming
+### S3 — optional capability slimming — in progress
 
-Review optional capabilities separately:
+S3 reviews optional capabilities independently. The objective is dependency
+direction and replaceability first; feature removal requires a separate
+compatibility decision.
 
-- Access Audit;
+First S3 slice: Access Audit attachment isolation.
+
+```text
+Service
+   -> auditcoord.Coordinator
+        -> ControlPlane AuditTarget capability
+        -> optional runtime audit hook
+        -> existing audit.Reporter
+```
+
+The coordinator owns only configuration/identity mapping and optional runtime
+attachment. The existing `audit.Reporter` remains authoritative for rule
+refresh, matching, buffering and report transport. sing-box remains the only
+current runtime that exposes the audit hook; Xray/standalone behavior is
+unchanged.
+
+This slice intentionally does not:
+
+- change Access Audit HTTP endpoints or authentication;
+- move audit rules/reporting into TXBoard Core;
+- add audit support to Xray;
+- stop or redesign the reporter goroutine;
+- remove the embedded audit capability.
+
+Remaining S3 reviews stay separate:
+
 - ACME/DNS provider catalog;
 - geo/routing assets.
 
