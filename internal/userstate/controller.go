@@ -84,12 +84,11 @@ func (c *Controller) Replace(users []model.UserSpec, hash string) Transition {
 	}
 	next := append([]model.UserSpec(nil), users...)
 
-	c.mu.RLock()
+	c.mu.Lock()
 	previous := Snapshot{
 		Users: append([]model.UserSpec(nil), c.users...),
 		Hash:  c.hash,
 	}
-	c.mu.RUnlock()
 
 	var removed []int
 	if c.limiter != nil {
@@ -99,7 +98,6 @@ func (c *Controller) Replace(users []model.UserSpec, hash string) Transition {
 		c.speedTracker.UpdateBuckets()
 	}
 
-	c.mu.Lock()
 	c.users = next
 	c.hash = hash
 	c.mu.Unlock()
@@ -119,14 +117,13 @@ func (c *Controller) Restore(snapshot Snapshot) {
 		users = []model.UserSpec{}
 	}
 
+	c.mu.Lock()
 	if c.limiter != nil {
 		c.limiter.UpdateUsers(users)
 	}
 	if c.speedTracker != nil {
 		c.speedTracker.UpdateBuckets()
 	}
-
-	c.mu.Lock()
 	c.users = users
 	c.hash = snapshot.Hash
 	c.mu.Unlock()
