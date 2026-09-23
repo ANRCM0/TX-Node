@@ -14,6 +14,7 @@ import (
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/controlplane"
 	"github.com/PaiMonCai/TX-Node/internal/kernel"
+	"github.com/PaiMonCai/TX-Node/internal/kernellifecycle"
 	"github.com/PaiMonCai/TX-Node/internal/kernel/singbox"
 	"github.com/PaiMonCai/TX-Node/internal/kernel/xray"
 	"github.com/PaiMonCai/TX-Node/internal/limiter"
@@ -33,6 +34,7 @@ type Service struct {
 	source       controlplane.Source
 	sink         controlplane.Sink
 	kernel       kernel.Kernel
+	kernelLife   *kernellifecycle.Controller
 	tracker      *tracker.Tracker
 	limiter      *limiter.Limiter
 	speedTracker *limiter.SpeedTracker
@@ -43,13 +45,6 @@ type Service struct {
 
 	// nodeLog is the logger with node context for this service instance.
 	nodeLog *nlog.NodeLog
-
-	// appliedState tracks the configuration and users that are currently
-	// successfully running in the kernel.
-	appliedState struct {
-		Config *model.NodeSpec
-		Users  []model.UserSpec
-	}
 
 	pushInterval int // seconds
 	pullInterval int // seconds
@@ -136,6 +131,7 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 		source:       cp,
 		sink:         cp,
 		kernel:       k,
+		kernelLife:   kernellifecycle.New(k),
 		tracker:      tracker.New(),
 		limiter:      l,
 		speedTracker: st,
@@ -160,7 +156,7 @@ func (s *Service) Run(ctx context.Context) error {
 	if err := s.initialSetup(ctx); err != nil {
 		return fmt.Errorf("initial setup: %w", err)
 	}
-	defer s.kernel.Stop()
+	defer s.kernelLife.Stop()
 
 	// Set up tickers
 	trackTicker := time.NewTicker(time.Duration(s.cfg.Node.TrackInterval) * time.Second)
@@ -465,65 +461,6 @@ func (s *Service) handleWSEvent(ctx context.Context, event controlplane.Event) {
 
 	default:
 		nlog.Core().Debug(fmt.Sprintf("unknown ws event: %v", event.Type))
-	}
-}
-
-// startKernel starts (or restarts) the kernel with the given config/users and
-// records the successfully applied state. Returns false on error.
-func (s *Service) startKernel(nc *model.NodeSpec, users []model.UserSpec) bool {
-	if err := s.kernel.Start(nc, users, s.cert.TLSCert()); err != nil {
-		nlog.Core().Error("failed to start kernel", "error", err)
-		return false
-	}
-
-	s.appliedState.Config = nc
-	s.appliedState.Users = users
-
-	// Initialize node logger on first successful start
-	if s.nodeLog == nil {
-		s.nodeLog = nlog.ForNode(nc.Protocol, nc.ServerPort)
-	}
-	s.speedTracker.SetLogCallback(func(msg string) {
-		fullMsg := fmt.Sprintf("speedtracker: %s active_limiters=%d", msg, s.speedTracker.LimitedUserCount())
-		s.nodeLog.Info(fullMsg)
-	})
-	s.nodeLog.Info(fmt.Sprintf("started, %d users", len(users)))
-	return true
-}
-
-// applyChanges applies config changes to the kernel. User-only changes are
-// handled by applyUserUpdate/applyUserDelta directly via the atomic user API.
-func (s *Service) applyChanges(ctx context.Context, configChanged, usersChanged bool) {
-	_ = ctx
-	_ = usersChanged
-	if !configChanged {
-		return
-	}
-
-	users := s.users.Users()
-	if s.lastConfig == nil || len(users) == 0 {
-		if len(users) == 0 {
-			s.kernel.Stop()
-			s.appliedState.Users = nil
-		}
-		return
-	}
-
-	// If config changed, delegate to kernel.Reload. The kernel implementation
-	// decides whether to hot-swap users, reconstruct inbounds, or restart itself.
-	if configChanged && s.kernel.IsRunning() {
-		if err := s.kernel.Reload(s.lastConfig, users, s.cert.TLSCert()); err != nil {
-			nlog.Core().Warn(fmt.Sprintf("reload failed, restarting: %v", err))
-			s.startKernel(s.lastConfig, users)
-		} else {
-			s.appliedState.Config = s.lastConfig
-			s.appliedState.Users = append([]model.UserSpec(nil), users...)
-			if s.nodeLog != nil {
-				s.nodeLog.Info(fmt.Sprintf("config updated, %d users", len(users)))
-			}
-		}
-	} else if !s.kernel.IsRunning() {
-		s.startKernel(s.lastConfig, users)
 	}
 }
 

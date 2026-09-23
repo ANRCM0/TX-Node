@@ -53,16 +53,14 @@ func (a serviceOpsRuntime) ReloadCurrent() error {
 	if configSnapshot == nil {
 		return fmt.Errorf("node config is not available")
 	}
-	if err := a.service.kernel.Reload(
+	if a.service.kernelLife == nil {
+		return fmt.Errorf("kernel lifecycle coordinator is unavailable")
+	}
+	return a.service.kernelLife.Reload(
 		configSnapshot,
 		usersSnapshot,
 		a.service.cert.TLSCert(),
-	); err != nil {
-		return err
-	}
-	a.service.appliedState.Config = configSnapshot
-	a.service.appliedState.Users = usersSnapshot
-	return nil
+	)
 }
 
 func (a serviceOpsRuntime) KernelStatus() (string, bool) {
