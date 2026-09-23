@@ -79,10 +79,7 @@ func (m *Manager) Request(requestID, target string) error {
 		return fmt.Errorf("create update directory: %w", err)
 	}
 
-	body := "schema=1
-request_id=" + requestID + "
-target=latest
-"
+	body := fmt.Sprintf("schema=1\nrequest_id=%s\ntarget=latest\n", requestID)
 	tmp, err := os.CreateTemp(m.dir, ".request-*")
 	if err != nil {
 		return fmt.Errorf("create update request: %w", err)
@@ -169,8 +166,7 @@ func parseEnvFile(path string, maxLines, maxBytes int) (map[string]string, error
 			continue
 		}
 		key, value, ok := strings.Cut(line, "=")
-		if !ok || key == "" || strings.ContainsAny(key, " 	
-") {
+		if !ok || key == "" || strings.IndexFunc(key, func(r rune) bool { return r <= ' ' || r == 0x7f }) >= 0) {
 			return nil, errors.New("invalid metadata line")
 		}
 		if _, exists := values[key]; exists {
