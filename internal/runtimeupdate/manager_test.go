@@ -2,8 +2,8 @@ package runtimeupdate
 
 import (
 	"os"
-	"strconv"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,10 +18,7 @@ func TestManagerAvailabilityAndRequest(t *testing.T) {
 	}
 
 	if err := os.WriteFile(filepath.Join(dir, "capabilities.env"), []byte(
-		"schema=1
-updater_available=true
-target=latest
-",
+		"schema=1\\nupdater_available=true\\ntarget=latest\\n",
 	), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -36,10 +33,7 @@ target=latest
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(body) != "schema=1
-request_id=mup_test-01
-target=latest
-" {
+	if string(body) != "schema=1\\nrequest_id=mup_test-01\\ntarget=latest\\n" {
 		t.Fatalf("unexpected request body: %q", body)
 	}
 
@@ -76,14 +70,8 @@ func TestLastStatusIsBoundedAndValidated(t *testing.T) {
 	statusPath := filepath.Join(dir, "status.env")
 	now := time.Now().Unix()
 
-	body := "schema=1
-request_id=mup_test-02
-target=latest
-status=rolled_back
-updated_at=" +
-		strconv.FormatInt(now, 10) + "
-message=previous image restored
-"
+	body := "schema=1\\nrequest_id=mup_test-02\\ntarget=latest\\nstatus=rolled_back\\nupdated_at=" +
+		strconv.FormatInt(now, 10) + "\\nmessage=previous image restored\\n"
 	if err := os.WriteFile(statusPath, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -97,12 +85,8 @@ message=previous image restored
 	}
 
 	if err := os.WriteFile(statusPath, []byte(
-		"schema=1
-request_id=mup_test-03
-target=latest
-status=exec
-updated_at="+strconv.FormatInt(now, 10)+"
-",
+		"schema=1\\nrequest_id=mup_test-03\\ntarget=latest\\nstatus=exec\\nupdated_at="+
+			strconv.FormatInt(now, 10)+"\\n",
 	), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -117,10 +101,7 @@ func TestCapabilityRejectsUnknownOrOversizedData(t *testing.T) {
 	path := filepath.Join(dir, "capabilities.env")
 
 	if err := os.WriteFile(path, []byte(
-		"schema=1
-updater_available=true
-target=v2.3.0
-",
+		"schema=1\\nupdater_available=true\\ntarget=v2.3.0\\n",
 	), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -135,4 +116,3 @@ target=v2.3.0
 		t.Fatal("oversized capability file must be rejected")
 	}
 }
-
