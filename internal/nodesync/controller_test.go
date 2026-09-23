@@ -255,3 +255,34 @@ func TestControllerDoesNotLatchResyncWhenPollingUnsupported(t *testing.T) {
 		t.Fatal("timed out waiting for resync poll")
 	}
 }
+
+
+func TestControllerConsecutivePollResultHandoffStress(t *testing.T) {
+	source := &fakeSource{
+		supportsPoll: true,
+		pollResult: controlplane.Snapshot{
+			Config: &model.NodeSpec{Protocol: "vless", ServerPort: 443},
+			Users:  []model.UserSpec{{ID: 1, UUID: "user-1"}},
+		},
+	}
+	controller := New(source)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	for i := 0; i < 100; i++ {
+		if !controller.Poll(ctx, "", i%2 == 0) {
+			t.Fatalf("poll %d was not admitted after previous result delivery", i)
+		}
+		select {
+		case <-controller.Results():
+			// Result delivery is the handoff guarantee: the next iteration must
+			// be able to start immediately without waiting for goroutine cleanup.
+		case <-ctx.Done():
+			t.Fatalf("poll %d result handoff timed out: %v", i, ctx.Err())
+		}
+	}
+
+	if got := source.pollCount(); got != 100 {
+		t.Fatalf("poll count = %d, want 100", got)
+	}
+}
