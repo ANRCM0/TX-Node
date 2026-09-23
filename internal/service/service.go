@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/PaiMonCai/TX-Node/internal/auditcoord"
-	"github.com/PaiMonCai/TX-Node/internal/cert/dnsproviders"
 	"github.com/PaiMonCai/TX-Node/internal/certcoord"
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/controlplane"
@@ -516,7 +515,7 @@ func validateNodeRuntime(cfg *config.Config, kcfgSupported []string, spec *model
 	if err := validateTLSRequirements(spec, tls, cfgKernelType(cfg)); err != nil {
 		return err
 	}
-	if err := validateRuntimeCertConfig(spec); err != nil {
+	if err := certcoord.ValidateNodeConfig(spec); err != nil {
 		return err
 	}
 	return nil
@@ -565,24 +564,6 @@ func hasUsableTLSConfig(spec *model.NodeSpec, tls kernel.TLSCert) bool {
 	default:
 		return false
 	}
-}
-
-func validateRuntimeCertConfig(spec *model.NodeSpec) error {
-	if spec == nil || spec.CertConfig == nil {
-		return nil
-	}
-	mode := strings.ToLower(strings.TrimSpace(spec.CertConfig.CertMode))
-	if mode != "dns" {
-		return nil
-	}
-	provider := strings.TrimSpace(spec.CertConfig.DNSProvider)
-	if provider == "" {
-		return fmt.Errorf("dns cert mode requires cert_config.dns_provider")
-	}
-	if _, ok := dnsproviders.Get(provider); !ok {
-		return fmt.Errorf("unsupported cert_config.dns_provider %q (supported: %s)", provider, strings.Join(dnsproviders.CanonicalNames(), ", "))
-	}
-	return nil
 }
 
 func validateRealityRequirements(spec *model.NodeSpec, _ string) error {
