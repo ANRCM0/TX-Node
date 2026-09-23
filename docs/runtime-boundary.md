@@ -185,7 +185,9 @@ Completed in the first simplification PR:
 
 S2 decomposes Service orchestration by responsibility without changing contracts.
 
-The first S2 slice extracts REST snapshot polling into `internal/nodesync.Controller`:
+Completed S2 slices:
+
+1. REST snapshot polling extracted into `internal/nodesync.Controller`:
 
 ```text
 Service
@@ -199,11 +201,26 @@ Service
   -> Service sync adapter validates/applies result
 ```
 
-This keeps ControlPlane polling mechanics out of Service while leaving runtime mutation authoritative in Service.
+2. Push/WebSocket connection lifecycle extracted into `internal/pushsync.Controller`:
+
+```text
+ControlPlane Initial / Discover
+        -> pushsync.Controller
+             -> event/status channels
+             -> PushClient start/stop
+             -> connected/disconnected lifecycle
+             -> delayed discovery eligibility
+        -> Service push adapter
+             -> logs
+             -> REST reconcile request
+             -> device-state clearing
+             -> event application
+```
+
+The controllers own transport/synchronization mechanics only. Service remains authoritative for validating and applying data-plane state.
 
 Remaining S2 slices are intentionally separate PRs:
 
-- push / WebSocket synchronization coordination;
 - user state controller;
 - reporting controller;
 - kernel lifecycle coordinator;
