@@ -42,6 +42,31 @@ Normal node services obtain their control plane through `controlplane.NewForConf
 
 Machine orchestration is the exception because it owns the shared transport and therefore injects a per-node `ControlPlane` explicitly through `service.NewWithControlPlane`.
 
+## Typed Node Ops isolation
+
+Typed Node Ops remain a core data-plane capability, but operation dispatch no longer belongs directly in the top-level Service orchestrator.
+
+The runtime boundary is:
+
+```text
+ControlPlane EventOpsRequest
+        |
+        v
+internal/nodeops.Executor
+        |
+        v
+serviceOpsRuntime adapter
+        |
+        v
+Service / Kernel
+```
+
+`nodeops.Executor` owns the fixed operation allow-list, bounded argument parsing, replay protection and bounded log/network diagnostics. The Service adapter exposes only current runtime validation, restart/reload, status, system metrics and application-log location.
+
+This prevents a new typed operation from automatically gaining access to unrelated Service state. The protocol contract is unchanged.
+
+See [Runtime Boundary](./runtime-boundary.md) for the feature gate and simplification roadmap.
+
 ## Optional capabilities
 
 Protocol-specific extensions that are not universal control-plane operations must be exposed as optional capability interfaces rather than by teaching core service code about a concrete panel.
