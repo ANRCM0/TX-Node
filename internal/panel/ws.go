@@ -30,6 +30,7 @@ const (
 	WSEventOpsNetworkDNS = "ops.network.dns"
 	WSEventOpsNetworkPortCheck = "ops.network.port_check"
 	WSEventOpsLogsTail = "ops.logs.tail"
+	WSEventOpsMachineRuntimeUpdate = "ops.machine.runtime.update"
 	WSEventOpsResult = "ops.result"
 )
 
@@ -48,8 +49,13 @@ type WSEvent struct {
 	// Machine node discovery fields (for sync.nodes)
 	Nodes []MachineNode
 
-	// Typed Agent Ops request. Only allow-listed ops.* events populate this.
+	// Typed Agent Ops request. Only allow-listed per-node ops.* events populate this.
 	OpsRequest *OpsRequest
+
+	// MachineRuntimeUpdate is a machine-scoped lifecycle request. It is kept
+	// separate from per-node OpsRequest so a machine update can never be
+	// mistaken for a node operation or routed into a node mailbox.
+	MachineRuntimeUpdate *MachineRuntimeUpdateRequest
 }
 
 // WSStatusChange notifies the service when WS connectivity changes.
@@ -104,6 +110,14 @@ type OpsRequest struct {
 	Args      map[string]interface{} `json:"args"`
 	NodeID    int                    `json:"node_id"`
 	Operation string                 `json:"-"`
+}
+
+// MachineRuntimeUpdateRequest is intentionally narrow: v1 accepts only a
+// request correlation ID and the fixed "latest" target. Validation and host
+// delegation live in runtimeupdate.Manager.
+type MachineRuntimeUpdateRequest struct {
+	RequestID string `json:"request_id"`
+	Target    string `json:"target"`
 }
 
 // WSClientConfig holds WebSocket client tuning options.
@@ -378,7 +392,8 @@ func (w *WSClient) handleMessage(msg wsMessage) {
 		WSEventOpsSystemInfo,
 		WSEventOpsNetworkDNS,
 		WSEventOpsNetworkPortCheck,
-		WSEventOpsLogsTail:
+		WSEventOpsLogsTail,
+		WSEventOpsMachineRuntimeUpdate:
 		w.handleDataEvent(msg)
 
 	default:
@@ -487,6 +502,18 @@ func (w *WSClient) handleDataEvent(msg wsMessage) {
 			return
 		}
 		event.Nodes = p.Nodes
+
+	case WSEventOpsMachineRuntimeUpdate:
+		var p MachineRuntimeUpdateRequest
+		if err := decodeData(msg.Data, &p); err != nil {
+			nlog.Core().Warn("ws: cannot decode machine runtime update", "error", err)
+			return
+		}
+		if p.RequestID == "" || len(p.RequestID) > 64 {
+			nlog.Core().Warn("ws: invalid machine runtime update request_id")
+			return
+		}
+		event.MachineRuntimeUpdate = &p
 
 	case WSEventOpsKernelStatus,
 		WSEventOpsKernelRestart,
