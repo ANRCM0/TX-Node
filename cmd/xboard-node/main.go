@@ -14,16 +14,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/PaiMonCai/TX-Node/internal/buildinfo"
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/machine"
 	"github.com/PaiMonCai/TX-Node/internal/nlog"
 	"github.com/PaiMonCai/TX-Node/internal/service"
 )
 
-var (
-	version   = "dev"
-	buildTime = "unknown"
-)
 
 func main() {
 	configPath := flag.String("c", "config.yml", "config file path")
@@ -31,7 +28,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("tx-node %s (built %s)\n", version, buildTime)
+		fmt.Printf("tx-node %s (built %s)\n", buildinfo.Version, buildinfo.BuildTime)
 		os.Exit(0)
 	}
 
