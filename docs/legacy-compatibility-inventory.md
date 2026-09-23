@@ -53,7 +53,7 @@ Compatibility surfaces are classified as:
 | Machine mode | canonical | TX-Node Machine orchestrator + TXBoard | none | not a retirement target |
 | Xboard-compatible ControlPlane protocol | supported adapter | `internal/controlplane` / panel adapter | none; interoperability remains supported | external panel compatibility is intentional |
 | Installer Docker deployment | canonical | TX-Node-Installer | none | not a retirement target |
-| `tx-node` binary identity | canonical runtime identity | TX-Node | none | not a retirement target |
+| `tx-node` binary identity | canonical runtime identity | `cmd/tx-node` | none | not a retirement target |
 | panel-connected single-node mode | frozen compatibility | TX-Node Service + Xboard adapter | TXBoard Machine mode where available | existing non-Machine panel deployments; no forced migration window defined |
 | Local / standalone ControlPlane | frozen compatibility | TX-Node local ControlPlane/config/model | no exact replacement | offline/local use is semantically different from TXBoard Machine mode |
 | `xboard-node` binary alias/artifact | frozen compatibility; retirement candidate | Makefile / release workflow | `tx-node` | old scripts, systemd units and automation may invoke the old name |
@@ -62,6 +62,19 @@ Compatibility surfaces are classified as:
 | `xboard-node.service` native systemd layout | migration source; retirement candidate | historical native deployment | Installer Docker deployment | existing services may still be running; safe import/rollback must be proven |
 | `/usr/local/bin/xboard-node` native binary path | migration source; retirement candidate | historical native deployment | official container / `tx-node` identity | old service definitions and operator scripts may reference the path |
 | `/usr/local/bin/xbctl` legacy management path | migration source; retirement candidate | historical native deployment | `/usr/local/bin/txnode` | old operational runbooks may still use it |
+
+## 4. Canonical source entrypoint
+
+The source-tree command entrypoint is canonicalized as:
+
+```text
+cmd/tx-node
+   -> tx-node
+```
+
+This source-path cleanup does **not** remove the published `xboard-node`
+compatibility artifact/alias yet. Release and host compatibility are separate
+retirement steps and remain subject to the S4 gates below.
 
 ## 4. Important distinction: protocol compatibility is not deployment legacy
 
