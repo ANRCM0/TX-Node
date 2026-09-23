@@ -15,7 +15,7 @@ func (s *Service) startKernel(config *model.NodeSpec, users []model.UserSpec) bo
 	if s == nil || s.kernelLife == nil {
 		return false
 	}
-	if err := s.kernelLife.Start(config, users, s.cert.TLSCert()); err != nil {
+	if err := s.kernelLife.Start(config, users, s.certs.TLSCert()); err != nil {
 		nlog.Core().Error("failed to start kernel", "error", err)
 		return false
 	}
@@ -53,7 +53,7 @@ func (s *Service) applyChanges(ctx context.Context, configChanged, usersChanged 
 	}
 
 	if s.kernel.IsRunning() {
-		if err := s.kernelLife.Reload(s.lastConfig, users, s.cert.TLSCert()); err != nil {
+		if err := s.kernelLife.Reload(s.lastConfig, users, s.certs.TLSCert()); err != nil {
 			nlog.Core().Warn(fmt.Sprintf("reload failed, restarting: %v", err))
 			s.startKernel(s.lastConfig, users)
 			return

@@ -181,7 +181,7 @@ Completed in the first simplification PR:
 - preserved all Node Ops contracts and behavior;
 - froze feature expansion of standalone/legacy management surfaces.
 
-### S2 — Service decomposition — in progress
+### S2 — Service decomposition — complete
 
 S2 decomposes Service orchestration by responsibility without changing contracts.
 
@@ -265,9 +265,25 @@ Service kernel adapter
 
 The controller owns only disruptive lifecycle transitions and the last successfully applied full config/user snapshot. Atomic user add/remove/update remains in the existing kernel user API and is not duplicated.
 
-Remaining S2 slice:
+6. Certificate coordination isolated behind `internal/certcoord.Coordinator`:
 
-- certificate coordination adapter.
+```text
+Service / ControlPlane cert intent
+        -> certcoord.Coordinator
+             -> lifecycle + TLS material facts
+             -> panel cert_config normalization
+             -> legacy compatibility mapping
+        -> existing cert.Manager
+             -> self / file / content
+             -> HTTP ACME / DNS ACME
+             -> persistence / renewal
+```
+
+The coordinator is an adapter over the existing certificate runtime. It does not reimplement ACME, DNS providers, persistence, PEM validation or renewal.
+
+S2 is complete. The top-level Service is now orchestration over dedicated synchronization, push, user-state, reporting, kernel-lifecycle and certificate adapters/controllers.
+
+The next architecture stage is S3 optional-capability slimming. S3 must review each optional capability independently and preserve compatibility before any removal.
 
 The top-level Service remains orchestration only.
 
