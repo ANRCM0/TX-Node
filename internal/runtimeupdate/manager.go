@@ -166,7 +166,7 @@ func parseEnvFile(path string, maxLines, maxBytes int) (map[string]string, error
 			continue
 		}
 		key, value, ok := strings.Cut(line, "=")
-		if !ok || key == "" || strings.IndexFunc(key, func(r rune) bool { return r <= ' ' || r == 0x7f }) >= 0) {
+		if !ok || key == "" || strings.IndexFunc(key, func(r rune) bool { return r <= ' ' || r == 0x7f }) >= 0 {
 			return nil, errors.New("invalid metadata line")
 		}
 		if _, exists := values[key]; exists {
