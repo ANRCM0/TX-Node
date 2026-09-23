@@ -38,6 +38,21 @@ jobs:
       - name: Run tests
         run: make test
 
+  runtime-stability:
+    name: Runtime stability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Stress extracted runtime controllers
+        run: make test-runtime-stability
+
   build:
     name: Build
     runs-on: ubuntu-latest
