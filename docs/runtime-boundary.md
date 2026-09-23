@@ -287,7 +287,7 @@ The next architecture stage is S3 optional-capability slimming. S3 must review e
 
 The top-level Service remains orchestration only.
 
-### S3 — optional capability slimming — in progress
+### S3 — optional capability slimming — complete
 
 S3 reviews optional capabilities independently. The objective is dependency
 direction and replaceability first; feature removal requires a separate
@@ -379,16 +379,24 @@ S3 is complete. Review outcomes:
 
 No optional capability was removed in S3.
 
-### S4 — legacy retirement proposal
+### S4 — compatibility stabilization + retirement assessment — in progress
 
-Only after measured usage and a versioned migration plan:
+S4 begins with assessment and stabilization, not deletion.
 
-- evaluate `xbctl`;
-- evaluate legacy systemd layout;
-- evaluate standalone feature growth;
-- define a breaking release if removal is justified.
+See [S4 Compatibility Inventory](./legacy-compatibility-inventory.md).
 
-S4 is not authorized by this document alone.
+Current S4 sequence:
+
+1. **S4-A — compatibility inventory**: classify canonical, supported-adapter,
+   frozen-compatibility and migration-only surfaces; define retirement gates;
+2. **S4-B — post-S3 runtime stabilization**: strengthen race/lifecycle tests for
+   the extracted controllers;
+3. **S4-C — freeze enforcement**: make accidental legacy feature growth visible
+   without blocking compatibility/security fixes;
+4. **S4-D — versioned retirement proposal**: only after replacement, migration,
+   compatibility-window, usage-evidence and rollback gates are satisfied.
+
+No legacy surface is authorized for removal by entering S4.
 
 ## 9. Non-goals
 
