@@ -213,3 +213,29 @@ func TestControllerCoalescesResyncRequests(t *testing.T) {
 	}
 	<-controller.Results()
 }
+
+
+func TestControllerDoesNotLatchResyncWhenPollingUnsupported(t *testing.T) {
+	source := &fakeSource{supportsPoll: false}
+	controller := New(source)
+
+	if controller.RequestResync(context.Background(), "", false) {
+		t.Fatal("unsupported polling must not report an accepted resync")
+	}
+	if controller.resyncPending.Load() {
+		t.Fatal("unsupported polling must not leave resync pending")
+	}
+
+	source.mu.Lock()
+	source.supportsPoll = true
+	source.mu.Unlock()
+
+	if !controller.RequestResync(context.Background(), "", false) {
+		t.Fatal("resync should be accepted after polling becomes available")
+	}
+	select {
+	case <-controller.Results():
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for resync poll")
+	}
+}
