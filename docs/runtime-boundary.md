@@ -388,7 +388,7 @@ S3 is complete. Review outcomes:
 
 No optional capability was removed in S3.
 
-### S4 — compatibility stabilization + retirement assessment — in progress
+### S4 — compatibility stabilization + retirement assessment — complete
 
 S4 begins with assessment and stabilization, not deletion.
 
@@ -396,20 +396,21 @@ See [S4 Compatibility Inventory](./legacy-compatibility-inventory.md).
 
 Current S4 sequence:
 
-1. **S4-A — compatibility inventory**: classify canonical, supported-adapter,
+1. **S4-A — compatibility inventory — complete**: classify canonical, supported-adapter,
    frozen-compatibility and migration-only surfaces; define retirement gates;
-2. **S4-B — post-S3 runtime stabilization**: strengthen race/lifecycle tests for
+2. **S4-B — post-S3 runtime stabilization — complete**: strengthen race/lifecycle tests for
    the extracted controllers;
 3. **S4-C — freeze enforcement — complete**: CI rejects reintroduction of the
    retired `xbctl`, `xboard-node-linux-*` release artifacts and Docker alias;
-4. **S4-D — versioned retirement**: the operator explicitly authorized removal
+4. **S4-D — versioned retirement — complete**: the operator explicitly authorized removal
    of the historical `xbctl` / `xboard-node` release surfaces after the
    Installer gained migration and cleanup ownership.
 
-S4-D is implemented incrementally: source/build/release aliases are retired,
-and TX-Node now uses `/etc/txnode/config.yml` as the canonical container path
-with a bounded old-Compose fallback. The matching Installer change must generate
-the canonical mount before S4-D is marked complete.
+S4-D is complete: source/build/release aliases are retired; TX-Node uses
+`/etc/txnode/config.yml` as the canonical container path; TX-Node-Installer
+generates the same canonical target and owns legacy migration/cleanup. A bounded
+`/etc/xboard-node/config.yml` startup fallback remains only for already-generated
+Compose files and is not a second source of configuration truth.
 
 ## 9. Non-goals
 
