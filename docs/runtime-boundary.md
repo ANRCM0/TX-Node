@@ -219,9 +219,24 @@ ControlPlane Initial / Discover
 
 The controllers own transport/synchronization mechanics only. Service remains authoritative for validating and applying data-plane state.
 
+3. Desired user runtime state extracted into `internal/userstate.Controller`:
+
+```text
+ControlPlane users
+      -> Service user adapter
+      -> userstate.Controller
+           -> desired user snapshot + hash
+           -> limiter index
+           -> speed-limiter index
+      -> Service kernel mutation
+           -> success keeps desired state
+           -> failure restores previous snapshot
+```
+
+The controller owns only desired user state and derived limiter indexes. The proxy kernel remains the authoritative executor of applied users, tracked separately by `Service.appliedState`.
+
 Remaining S2 slices are intentionally separate PRs:
 
-- user state controller;
 - reporting controller;
 - kernel lifecycle coordinator;
 - certificate coordination adapter.
