@@ -24,8 +24,7 @@ RUN apk add --no-cache ca-certificates tzdata
 
 COPY --from=builder /build/tx-node /usr/local/bin/tx-node
 
-RUN ln -s /usr/local/bin/tx-node /usr/local/bin/xboard-node \
-    && mkdir -p /etc/xboard-node
+RUN mkdir -p /etc/xboard-node
 
 WORKDIR /etc/xboard-node
 
