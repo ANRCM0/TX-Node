@@ -1,6 +1,6 @@
 # TX-Node S4 Compatibility Inventory
 
-Status: **S4-D retirement implementation in progress**
+Status: **S4 complete — bounded migration compatibility retained**
 
 This document inventories TX-Node compatibility surfaces after Runtime Simplification S1–S3.
 
@@ -220,13 +220,13 @@ Not allowed by default:
 
 S4 is intentionally split into independent work:
 
-### S4-A — compatibility inventory
+### S4-A — compatibility inventory — complete
 
 This document.
 
 No runtime behavior change.
 
-### S4-B — post-S3 runtime stabilization
+### S4-B — post-S3 runtime stabilization — complete
 
 Harden the extracted runtime controllers with race/lifecycle regressions, especially:
 
@@ -246,7 +246,7 @@ Add lightweight regression checks that make accidental feature growth on legacy 
 
 This must not prevent security or migration fixes.
 
-### S4-D — versioned retirement implementation
+### S4-D — versioned retirement implementation — complete
 
 Authorized retirement scope:
 
@@ -259,7 +259,17 @@ Authorized retirement scope:
 - update TX-Node-Installer to generate only the canonical container config
   target while preserving remote-update repair for old Compose files.
 
-Not authorized by this step:
+Completed result:
+
+- TX-Node v2 publishes only the canonical `tx-node` release identity;
+- TX-Node-Installer owns legacy native migration and cleanup;
+- new Installer Compose files use `/etc/txnode/config.yml` in both host and container;
+- TX-Node keeps only the bounded old-Compose `/etc/xboard-node/config.yml` fallback.
+
+The bounded container fallback is compatibility debt, not a second canonical
+path. Removing it requires a future explicit compatibility-window decision.
+
+Not authorized by S4:
 
 - Xboard ControlPlane protocol removal;
 - standalone removal;
