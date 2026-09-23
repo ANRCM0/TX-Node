@@ -58,7 +58,8 @@ Compatibility surfaces are classified as:
 | Local / standalone ControlPlane | frozen compatibility | TX-Node local ControlPlane/config/model | no exact replacement | offline/local use is semantically different from TXBoard Machine mode |
 | `xboard-node` binary alias/artifact | retired from v2 mainline | historical release workflow | `tx-node` | Installer migration remains for old hosts |
 | `xbctl` | retired from v2 mainline | historical TX-Node CLI | Installer-owned `txnode` command | Installer migration/cleanup remains for old hosts |
-| legacy `/etc/xboard-node` layout | migration source; retirement candidate | historical native install compatibility | Installer `/etc/txnode` layout | migration/import support must remain available for existing hosts |
+| legacy host `/etc/xboard-node` layout | migration source; retirement candidate | historical native install compatibility | Installer `/etc/txnode` layout | migration/import support must remain available for existing hosts |
+| legacy container `/etc/xboard-node/config.yml` | bounded compatibility fallback | TX-Node startup resolver | `/etc/txnode/config.yml` | existing generated Compose files may still mount the old target |
 | `xboard-node.service` native systemd layout | migration source; retirement candidate | historical native deployment | Installer Docker deployment | existing services may still be running; safe import/rollback must be proven |
 | `/usr/local/bin/xboard-node` native binary path | migration source; retirement candidate | historical native deployment | official container / `tx-node` identity | old service definitions and operator scripts may reference the path |
 | `/usr/local/bin/xbctl` legacy management path | migration source; retirement candidate | historical native deployment | `/usr/local/bin/txnode` | old operational runbooks may still use it |
@@ -252,8 +253,11 @@ Authorized retirement scope:
 - remove `xbctl` source/build/release output from TX-Node;
 - stop producing the `xboard-node` binary/release alias;
 - keep legacy native/systemd detection, import and cleanup in TX-Node-Installer;
-- migrate the container config path to `/etc/txnode` in a separate cross-repo
-  step with a bounded fallback for already-generated Compose files.
+- canonicalize the container config path as `/etc/txnode/config.yml`;
+- retain a bounded TX-Node startup fallback to `/etc/xboard-node/config.yml`
+  only for already-generated Compose files;
+- update TX-Node-Installer to generate only the canonical container config
+  target while preserving remote-update repair for old Compose files.
 
 Not authorized by this step:
 
