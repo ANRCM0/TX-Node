@@ -3,12 +3,15 @@ package machine
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/controlplane"
 	"github.com/PaiMonCai/TX-Node/internal/panel"
+	"github.com/PaiMonCai/TX-Node/internal/runtimeupdate"
 )
 
 // newTestOrchestrator builds an Orchestrator without touching the network.
@@ -197,5 +200,61 @@ func TestReportHealthPublishesDegraded(t *testing.T) {
 
 	if agg, _ := globalHealth.Aggregate(); agg.Failed != 0 {
 		t.Fatalf("after backoff expired, failed = %d, want 0", agg.Failed)
+	}
+}
+
+
+func TestMachineRuntimeUpdateDelegatesToInstallerBridge(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(dir, "capabilities.env"),
+		[]byte("schema=1\nupdater_available=true\ntarget=latest\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	o := newTestOrchestrator()
+	o.runtimeUpdater = runtimeupdate.New(dir)
+	o.onWSEvent(panel.WSEvent{
+		Type: panel.WSEventOpsMachineRuntimeUpdate,
+		MachineRuntimeUpdate: &panel.MachineRuntimeUpdateRequest{
+			RequestID: "mup_test-01",
+			Target:    "latest",
+		},
+	})
+
+	body, err := os.ReadFile(filepath.Join(dir, "request.env"))
+	if err != nil {
+		t.Fatalf("expected Installer request file: %v", err)
+	}
+	want := "schema=1\nrequest_id=mup_test-01\ntarget=latest\n"
+	if string(body) != want {
+		t.Fatalf("request = %q, want %q", body, want)
+	}
+}
+
+func TestMachineRuntimeUpdateRejectsUnsupportedTarget(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(dir, "capabilities.env"),
+		[]byte("schema=1\nupdater_available=true\ntarget=latest\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	o := newTestOrchestrator()
+	o.runtimeUpdater = runtimeupdate.New(dir)
+	o.onWSEvent(panel.WSEvent{
+		Type: panel.WSEventOpsMachineRuntimeUpdate,
+		MachineRuntimeUpdate: &panel.MachineRuntimeUpdateRequest{
+			RequestID: "mup_test-02",
+			Target:    "ghcr.io/example/other:latest",
+		},
+	})
+
+	if _, err := os.Stat(filepath.Join(dir, "request.env")); !os.IsNotExist(err) {
+		t.Fatalf("unsafe target created request file: err=%v", err)
 	}
 }
