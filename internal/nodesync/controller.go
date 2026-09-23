@@ -74,12 +74,11 @@ func (c *Controller) Poll(ctx context.Context, currentConfigHash string, certCha
 	}
 
 	go func() {
-		defer c.pullActive.Store(false)
-
 		snapshot, err := c.source.Poll(ctx)
 		if err != nil {
 			nlog.Core().Error("poll control plane failed", "error", err)
 			c.backoff.onFailure()
+			c.pullActive.Store(false)
 			return
 		}
 		c.backoff.onSuccess()
@@ -97,6 +96,11 @@ func (c *Controller) Poll(ctx context.Context, currentConfigHash string, certCha
 			result.UserHash = UserHash(snapshot.Users)
 		}
 
+		// Mark the poll complete before publishing the buffered result. This
+		// guarantees that a consumer receiving the result can immediately
+		// schedule the next poll instead of racing the goroutine's deferred
+		// cleanup and then waiting forever for a result that was never started.
+		c.pullActive.Store(false)
 		select {
 		case c.results <- result:
 		case <-ctx.Done():
