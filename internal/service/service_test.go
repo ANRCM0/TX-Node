@@ -24,7 +24,8 @@ type fakeKernel struct {
 	startCalls  int
 	updateCalls int
 	addCalls    int
-	removeCalls int
+	removeCalls       int
+	clearDevicesCalls int
 
 	onUpdateUsers func([]model.UserSpec)
 	onAddUsers    func([]model.UserSpec)
@@ -93,8 +94,8 @@ func (f *fakeKernel) CloseUserConnections(ctx context.Context, uuid string) erro
 }
 func (f *fakeKernel) SetSpeedLimitFunc(fn func(uuid string) *rate.Limiter) { f.speedLimitFunc = fn }
 func (f *fakeKernel) SetDeviceLimitFunc(fn func(uuid string) (int, bool))  { f.deviceLimitFunc = fn }
-func (f *fakeKernel) UpdateGlobalDevices(users map[int][]string)           { _ = users }
-func (f *fakeKernel) ClearGlobalDevices()                                  {}
+func (f *fakeKernel) UpdateGlobalDevices(users map[int][]string) { _ = users }
+func (f *fakeKernel) ClearGlobalDevices()                    { f.clearDevicesCalls++ }
 
 func newTestService(k *fakeKernel) *Service {
 	sharedLimiter := limiter.New()
