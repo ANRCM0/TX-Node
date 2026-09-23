@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/cert"
+	"github.com/PaiMonCai/TX-Node/internal/certcoord"
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/kernel"
 	"github.com/PaiMonCai/TX-Node/internal/kernellifecycle"
@@ -114,7 +114,7 @@ func newTestService(k *fakeKernel) *Service {
 		kernelLife:   kernellifecycle.New(k),
 		limiter:      sharedLimiter,
 		speedTracker: speedTracker,
-		cert:         cert.NewManager(config.CertConfig{}),
+		certs:        certcoord.New(config.CertConfig{}),
 		users:        userstate.New(sharedLimiter, speedTracker),
 	}
 	k.SetSpeedLimitFunc(s.speedTracker.GetLimiter)
