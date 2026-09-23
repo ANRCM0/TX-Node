@@ -2,13 +2,8 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
-	"encoding/json"
 	"fmt"
-	"io"
 	"math"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,6 +22,7 @@ import (
 	"github.com/PaiMonCai/TX-Node/internal/monitor"
 	"github.com/PaiMonCai/TX-Node/internal/nlog"
 	"github.com/PaiMonCai/TX-Node/internal/nodeops"
+	"github.com/PaiMonCai/TX-Node/internal/nodesync"
 	"github.com/PaiMonCai/TX-Node/internal/tracker"
 )
 
@@ -58,21 +54,18 @@ type Service struct {
 
 	lastUserHash   string     // hash of user list for change detection
 	lastConfigHash string     // hash of full config for change detection
-	pullBackoff    apiBackoff // backoff for panel pull failures
 	pushBackoff    apiBackoff // backoff for panel push failures
 
-	// pushActive prevents overlapping push/pull goroutines.
+	// pushActive prevents overlapping report goroutines. Snapshot polling state
+	// lives in nodesync.Controller.
 	pushActive atomic.Bool
-	pullActive atomic.Bool
-	// pullResults delivers async pullViaAPI results back to the main goroutine.
-	pullResults chan pullResult
+	syncer     *nodesync.Controller
 
 	wsClient         controlplane.PushClient        // Push client (nil if push is not enabled)
 	wsEvents         chan controlplane.Event        // receives data events from push transport
 	wsStatusCh       chan controlplane.StatusChange // receives push connectivity notifications
 	wsCancel         context.CancelFunc             // cancels the WS client goroutine
 	wsDisconnectAt   time.Time                      // when WS last disconnected (zero if connected)
-	wsResyncPending  atomic.Bool
 	machineMailbox   *controlplane.NodeMailbox
 	machineMailboxCh <-chan struct{}
 
@@ -82,15 +75,6 @@ type Service struct {
 	// Typed Node Ops are isolated behind a narrow runtime adapter. Service owns
 	// orchestration; nodeops.Executor owns operation dispatch/replay protection.
 	ops *nodeops.Executor
-}
-
-// pullResult carries the outcome of an async pullViaAPI back to the main goroutine.
-type pullResult struct {
-	config      *model.NodeSpec
-	users       []model.UserSpec
-	configHash  string
-	userHash    string
-	certChanged bool
 }
 
 // apiBackoff implements simple exponential backoff for API failures.
@@ -196,7 +180,7 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 		cert:         certMgr,
 		wsEvents:     make(chan controlplane.Event, 16),
 		wsStatusCh:   make(chan controlplane.StatusChange, 4),
-		pullResults:  make(chan pullResult, 1),
+		syncer:       nodesync.New(cp),
 	}
 	s.ops = nodeops.New(serviceOpsRuntime{service: s}, s.sendOpsResult)
 	return s
@@ -260,10 +244,10 @@ func (s *Service) Run(ctx context.Context) error {
 			} else {
 				nlog.Core().Debug("polling from API (ws not connected)")
 			}
-			s.pullViaAPIAsync(ctx)
+			s.schedulePoll(ctx)
 
-		case result := <-s.pullResults:
-			s.applyPullResult(ctx, result)
+		case result := <-s.syncer.Results():
+			s.applySyncResult(ctx, result)
 
 		case <-wsDiscoveryTicker.C:
 			s.wsDiscovery(ctx)
@@ -458,18 +442,6 @@ func (s *Service) drainMachineMailbox(ctx context.Context) {
 	}
 }
 
-func (s *Service) requestWSResync(ctx context.Context, reason string) {
-	if !s.wsResyncPending.CompareAndSwap(false, true) {
-		return
-	}
-	if s.nodeLog != nil {
-		s.nodeLog.Warn("ws state may be stale, scheduling REST reconciliation", "reason", reason)
-	} else {
-		nlog.Core().Warn("ws state may be stale, scheduling REST reconciliation", "reason", reason)
-	}
-	s.pullViaAPIAsync(ctx)
-}
-
 func (s *Service) wsMetrics() map[string]interface{} {
 	status := monitor.Collect()
 	m := s.buildMetrics(status)
@@ -497,7 +469,7 @@ func (s *Service) handleWSStatus(ctx context.Context, status controlplane.Status
 		}
 		// After reconnect, proactively pull once to ensure we haven't missed
 		// any updates during the disconnection window.
-		s.pullViaAPIAsync(ctx)
+		s.schedulePoll(ctx)
 	} else {
 		s.metricsMu.Lock()
 		if s.wsDisconnectAt.IsZero() {
@@ -511,7 +483,7 @@ func (s *Service) handleWSStatus(ctx context.Context, status controlplane.Status
 		}
 		// Clear global device state on disconnect
 		s.kernel.ClearGlobalDevices()
-		s.pullViaAPIAsync(ctx)
+		s.schedulePoll(ctx)
 	}
 }
 
@@ -547,7 +519,7 @@ func (s *Service) wsDiscovery(ctx context.Context) {
 		return
 	}
 	if s.source.SupportsPolling() {
-		s.pullViaAPIAsync(ctx)
+		s.schedulePoll(ctx)
 	}
 
 	if pushClient != nil {
@@ -634,101 +606,6 @@ func (s *Service) handleWSEvent(ctx context.Context, event controlplane.Event) {
 
 	default:
 		nlog.Core().Debug(fmt.Sprintf("unknown ws event: %v", event.Type))
-	}
-}
-
-// pullViaAPIAsync fetches config/users from the panel API in a background
-// goroutine and sends the result to pullResults for the main goroutine to apply.
-func (s *Service) pullViaAPIAsync(ctx context.Context) {
-	if !s.source.SupportsPolling() {
-		return
-	}
-	if !s.pullActive.CompareAndSwap(false, true) {
-		nlog.Core().Debug("pull already in progress, skipping")
-		return
-	}
-	if s.pullBackoff.shouldSkip() {
-		nlog.Core().Debug("skipping pull due to backoff")
-		s.pullActive.Store(false)
-		return
-	}
-
-	currentConfigHash := s.lastConfigHash
-	certChanged := s.cert.CertRenewed()
-
-	go func() {
-		defer s.pullActive.Store(false)
-		snapshot, err := s.source.Poll(ctx)
-		if err != nil {
-			nlog.Core().Error("poll control plane failed", "error", err)
-			s.pullBackoff.onFailure()
-			return
-		}
-		s.pullBackoff.onSuccess()
-
-		result := pullResult{certChanged: certChanged}
-		if snapshot.Config != nil {
-			result.config = snapshot.Config
-			result.configHash = computeConfigHash(snapshot.Config)
-			if result.configHash == currentConfigHash && !certChanged {
-				result.config = nil
-			}
-		}
-		if snapshot.Users != nil {
-			result.users = snapshot.Users
-			result.userHash = computeUserHash(snapshot.Users)
-		}
-
-		select {
-		case s.pullResults <- result:
-		case <-ctx.Done():
-		}
-	}()
-}
-
-// applyPullResult processes the result of an async pullViaAPI on the main goroutine.
-func (s *Service) applyPullResult(ctx context.Context, result pullResult) {
-	s.wsResyncPending.Store(false)
-	configChanged := false
-
-	if result.certChanged {
-		nlog.Core().Info("certificate renewed, kernel restart needed")
-		configChanged = true
-	}
-
-	if result.config != nil {
-		if err := validateNodeRuntime(s.cfg, s.kernel.Protocols(), result.config, s.cert.TLSCert()); err != nil {
-			nlog.Core().Warn("runtime config validation failed", "error", err)
-			result.config = nil
-		} else {
-			configChanged = true
-			// Initialize or update node logger
-			if s.nodeLog == nil {
-				s.nodeLog = nlog.ForNode(result.config.Protocol, result.config.ServerPort)
-			}
-			s.nodeLog.Info(fmt.Sprintf("config updated, %d users", len(s.lastUsers)))
-			s.metricsMu.Lock()
-			s.lastConfig = result.config
-			s.metricsMu.Unlock()
-			s.lastConfigHash = result.configHash
-			if s.applyRemoteOverrides(ctx, result.config) {
-				configChanged = true
-			}
-		}
-	}
-
-	if result.users != nil {
-		usersChanged := result.userHash != s.lastUserHash
-
-		if usersChanged && !configChanged {
-			s.applyUserUpdate(ctx, result.users, result.userHash, srcPollFull)
-		} else if usersChanged {
-			s.updateUserState(result.users, srcPollFull)
-		}
-	}
-
-	if configChanged {
-		s.applyChanges(ctx, true, false)
 	}
 }
 
@@ -1209,42 +1086,6 @@ func (s *Service) buildMetrics(status monitor.Status) map[string]interface{} {
 	}
 
 	return m
-}
-
-// computeConfigHash returns a deterministic hash of the node config.
-// It uses JSON marshaling to ensure all fields are captured, ensuring that
-// any configuration change correctly triggers a kernel reload.
-func computeConfigHash(cfg *model.NodeSpec) string {
-	if cfg == nil {
-		return ""
-	}
-	h := sha256.New()
-	// We marshal the entire config to be safe. Node config updates are low-frequency,
-	// so the robustness of capturing all fields outweighs the micro-performance of manual hashing.
-	data, _ := json.Marshal(cfg)
-	h.Write(data)
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-// computeUserHash returns a deterministic hash of the user list for change detection.
-// Uses direct byte encoding instead of binary.Write to avoid reflection overhead.
-func computeUserHash(users []model.UserSpec) string {
-	sorted := make([]model.UserSpec, len(users))
-	copy(sorted, users)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
-
-	h := sha256.New()
-	var buf [8]byte
-	for _, u := range sorted {
-		binary.LittleEndian.PutUint64(buf[:], uint64(u.ID))
-		h.Write(buf[:])
-		io.WriteString(h, u.UUID)
-		binary.LittleEndian.PutUint64(buf[:], uint64(u.SpeedLimit))
-		h.Write(buf[:])
-		binary.LittleEndian.PutUint64(buf[:], uint64(u.DeviceLimit))
-		h.Write(buf[:])
-	}
-	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 // ─── Device management ──────────────────────────────────────────────────
