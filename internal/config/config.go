@@ -187,8 +187,9 @@ type CertConfig struct {
 	//   "none"   - no TLS
 	CertMode string `yaml:"cert_mode"`
 
-	// DNSProvider specifies the DNS provider for DNS-01 challenge.
-	// Supported: "cloudflare", "alidns"
+	// DNSProvider specifies a provider from TX-Node's built-in DNS-01
+	// compatibility catalog. The catalog is validated by the certificate
+	// runtime boundary rather than by core Service orchestration.
 	DNSProvider string `yaml:"dns_provider"`
 
 	// DNSEnv passes credentials to the DNS provider as key=value pairs.
