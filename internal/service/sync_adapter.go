@@ -57,7 +57,7 @@ func (s *Service) applySyncResult(ctx context.Context, result nodesync.Result) {
 			if s.nodeLog == nil {
 				s.nodeLog = nlog.ForNode(result.Config.Protocol, result.Config.ServerPort)
 			}
-			s.nodeLog.Info(fmt.Sprintf("config updated, %d users", len(s.lastUsers)))
+			s.nodeLog.Info(fmt.Sprintf("config updated, %d users", s.users.Count()))
 
 			s.metricsMu.Lock()
 			s.lastConfig = result.Config
@@ -71,11 +71,11 @@ func (s *Service) applySyncResult(ctx context.Context, result nodesync.Result) {
 	}
 
 	if result.Users != nil {
-		usersChanged := result.UserHash != s.lastUserHash
+		usersChanged := result.UserHash != s.users.Hash()
 		if usersChanged && !configChanged {
 			s.applyUserUpdate(ctx, result.Users, result.UserHash, srcPollFull)
 		} else if usersChanged {
-			s.updateUserState(result.Users, srcPollFull)
+			s.replaceUserState(result.Users, result.UserHash, srcPollFull)
 		}
 	}
 
