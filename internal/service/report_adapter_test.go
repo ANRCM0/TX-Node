@@ -11,6 +11,7 @@ import (
 	"github.com/PaiMonCai/TX-Node/internal/controlplane"
 	"github.com/PaiMonCai/TX-Node/internal/model"
 	"github.com/PaiMonCai/TX-Node/internal/reporting"
+	"github.com/PaiMonCai/TX-Node/internal/tracker"
 )
 
 type reportTestControlPlane struct {
@@ -67,6 +68,7 @@ func newReportingTestService(k *fakeKernel, cp *reportTestControlPlane) *Service
 	s.cfg = &config.Config{}
 	s.source = cp
 	s.sink = cp
+	s.tracker = tracker.New()
 	s.reporter = reporting.New(cp)
 	return s
 }
