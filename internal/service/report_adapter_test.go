@@ -9,6 +9,7 @@ import (
 
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/controlplane"
+	"github.com/PaiMonCai/TX-Node/internal/model"
 	"github.com/PaiMonCai/TX-Node/internal/reporting"
 )
 
