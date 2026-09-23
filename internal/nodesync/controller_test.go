@@ -167,10 +167,12 @@ func TestControllerBacksOffAfterFailure(t *testing.T) {
 		t.Fatal("first poll should start")
 	}
 	deadline := time.Now().Add(time.Second)
-	for source.pollCount() < 1 && time.Now().Before(deadline) {
+	for controller.pullActive.Load() && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	time.Sleep(10 * time.Millisecond)
+	if controller.pullActive.Load() {
+		t.Fatal("timed out waiting for failed poll to finish")
+	}
 
 	if controller.Poll(context.Background(), "", false) {
 		t.Fatal("first retry should be skipped by backoff")
