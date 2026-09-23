@@ -335,3 +335,64 @@ func TestStringOrArrayDecodeHook_String(t *testing.T) {
 		t.Errorf("got %q, want %q", cfg.PaddingScheme, want)
 	}
 }
+
+
+func TestReportMachineStatusIncludesRuntimeMetadata(t *testing.T) {
+	var received map[string]interface{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/server/machine/status" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	client := NewClient(config.PanelConfig{
+		URL:       ts.URL,
+		Token:     "machine-token",
+		MachineID: 12,
+	})
+	runtime := &MachineRuntimeStatus{
+		Version:          "v2.3.0",
+		BuildTime:        "2026-09-23T00:00:00Z",
+		Deployment:       "docker",
+		UpdaterAvailable: true,
+		Update: &MachineRuntimeUpdateStatus{
+			RequestID: "mup_test-01",
+			Target:    "latest",
+			Status:    "succeeded",
+			UpdatedAt: 1780000000,
+			Message:   "upgrade completed",
+		},
+	}
+
+	err := client.ReportMachineStatus(
+		10,
+		[2]uint64{100, 50},
+		[2]uint64{20, 1},
+		[2]uint64{1000, 400},
+		12,
+		34,
+		runtime,
+	)
+	if err != nil {
+		t.Fatalf("ReportMachineStatus: %v", err)
+	}
+	if received["machine_id"].(float64) != 12 {
+		t.Fatalf("machine_id = %v", received["machine_id"])
+	}
+	gotRuntime, ok := received["runtime"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("runtime payload missing: %#v", received)
+	}
+	if gotRuntime["version"] != "v2.3.0" || gotRuntime["updater_available"] != true {
+		t.Fatalf("unexpected runtime payload: %#v", gotRuntime)
+	}
+	update, ok := gotRuntime["update"].(map[string]interface{})
+	if !ok || update["status"] != "succeeded" || update["target"] != "latest" {
+		t.Fatalf("unexpected update payload: %#v", gotRuntime["update"])
+	}
+}
