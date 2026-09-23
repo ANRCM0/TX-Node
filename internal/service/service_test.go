@@ -11,6 +11,7 @@ import (
 	"github.com/PaiMonCai/TX-Node/internal/kernel"
 	"github.com/PaiMonCai/TX-Node/internal/limiter"
 	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/PaiMonCai/TX-Node/internal/userstate"
 	"golang.org/x/time/rate"
 )
 
@@ -99,11 +100,13 @@ func (f *fakeKernel) ClearGlobalDevices()                    { f.clearDevicesCal
 
 func newTestService(k *fakeKernel) *Service {
 	sharedLimiter := limiter.New()
+	speedTracker := limiter.NewSpeedTracker(sharedLimiter)
 	s := &Service{
 		kernel:       k,
 		limiter:      sharedLimiter,
-		speedTracker: limiter.NewSpeedTracker(sharedLimiter),
+		speedTracker: speedTracker,
 		cert:         cert.NewManager(config.CertConfig{}),
+		users:        userstate.New(sharedLimiter, speedTracker),
 	}
 	k.SetSpeedLimitFunc(s.speedTracker.GetLimiter)
 	k.SetDeviceLimitFunc(s.limiter.GetDeviceLimitByUUID)
@@ -132,8 +135,8 @@ func TestApplyUserUpdatePreparesLimiterBeforeKernelUpdate(t *testing.T) {
 	if got := k.updateCalls; got != 1 {
 		t.Fatalf("UpdateUsers call count = %d, want 1", got)
 	}
-	if len(s.lastUsers) != 1 || s.lastUsers[0].UUID != "uuid-new" {
-		t.Fatalf("lastUsers = %#v, want new users", s.lastUsers)
+	if len(s.users.Users()) != 1 || s.users.Users()[0].UUID != "uuid-new" {
+		t.Fatalf("lastUsers = %#v, want new users", s.users.Users())
 	}
 	if s.speedTracker.GetLimiter("uuid-new") == nil {
 		t.Fatal("expected limiter for new user after successful update")
@@ -150,7 +153,7 @@ func TestApplyUserUpdateRestoresStateWhenKernelAndRestartFail(t *testing.T) {
 	s.lastConfig = &model.NodeSpec{Protocol: "vless"}
 	oldUsers := []model.UserSpec{{ID: 1, UUID: "uuid-old", SpeedLimit: 4}}
 	s.updateUserState(oldUsers, srcBootstrap)
-	oldHash := s.lastUserHash
+	oldHash := s.users.Hash()
 
 	newUsers := []model.UserSpec{{ID: 2, UUID: "uuid-new", SpeedLimit: 8}}
 	s.applyUserUpdate(context.Background(), newUsers, computeUserHash(newUsers), srcWSFull)
@@ -158,11 +161,11 @@ func TestApplyUserUpdateRestoresStateWhenKernelAndRestartFail(t *testing.T) {
 	if got := k.startCalls; got != 1 {
 		t.Fatalf("Start call count = %d, want 1", got)
 	}
-	if len(s.lastUsers) != 1 || s.lastUsers[0].UUID != "uuid-old" {
-		t.Fatalf("lastUsers = %#v, want restored old users", s.lastUsers)
+	if len(s.users.Users()) != 1 || s.users.Users()[0].UUID != "uuid-old" {
+		t.Fatalf("lastUsers = %#v, want restored old users", s.users.Users())
 	}
-	if s.lastUserHash != oldHash {
-		t.Fatalf("lastUserHash = %q, want %q", s.lastUserHash, oldHash)
+	if s.users.Hash() != oldHash {
+		t.Fatalf("lastUserHash = %q, want %q", s.users.Hash(), oldHash)
 	}
 	if s.speedTracker.GetLimiter("uuid-old") == nil {
 		t.Fatal("expected old limiter to be restored after rollback")
@@ -217,8 +220,8 @@ func TestApplyUserUpdateStartsKernelWhenFirstUserArrives(t *testing.T) {
 	if !k.running {
 		t.Fatal("expected kernel to be running after first user arrives")
 	}
-	if len(s.lastUsers) != 1 || s.lastUsers[0].UUID != "uuid-first" {
-		t.Fatalf("lastUsers = %#v, want first user", s.lastUsers)
+	if len(s.users.Users()) != 1 || s.users.Users()[0].UUID != "uuid-first" {
+		t.Fatalf("lastUsers = %#v, want first user", s.users.Users())
 	}
 	if s.speedTracker.GetLimiter("uuid-first") == nil {
 		t.Fatal("expected limiter for first user before kernel start")
@@ -243,8 +246,8 @@ func TestApplyUserDeltaStartsKernelWhenFirstUserArrives(t *testing.T) {
 	if !k.running {
 		t.Fatal("expected kernel to be running after first user delta")
 	}
-	if len(s.lastUsers) != 1 || s.lastUsers[0].UUID != "uuid-first" {
-		t.Fatalf("lastUsers = %#v, want first user", s.lastUsers)
+	if len(s.users.Users()) != 1 || s.users.Users()[0].UUID != "uuid-first" {
+		t.Fatalf("lastUsers = %#v, want first user", s.users.Users())
 	}
 }
 
@@ -260,8 +263,8 @@ func TestApplyUserDeltaRemoveUpdatesStoppedServiceState(t *testing.T) {
 	if got := k.removeCalls; got != 0 {
 		t.Fatalf("RemoveUsers call count = %d, want 0 while kernel is stopped", got)
 	}
-	if len(s.lastUsers) != 1 || s.lastUsers[0].ID != 2 {
-		t.Fatalf("lastUsers = %#v, want only user 2", s.lastUsers)
+	if len(s.users.Users()) != 1 || s.users.Users()[0].ID != 2 {
+		t.Fatalf("lastUsers = %#v, want only user 2", s.users.Users())
 	}
 }
 

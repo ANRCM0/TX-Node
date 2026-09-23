@@ -25,6 +25,7 @@ import (
 	"github.com/PaiMonCai/TX-Node/internal/nodesync"
 	"github.com/PaiMonCai/TX-Node/internal/pushsync"
 	"github.com/PaiMonCai/TX-Node/internal/tracker"
+	"github.com/PaiMonCai/TX-Node/internal/userstate"
 )
 
 type Service struct {
@@ -38,7 +39,7 @@ type Service struct {
 	cert         *cert.Manager
 
 	lastConfig *model.NodeSpec
-	lastUsers  []model.UserSpec
+	users      *userstate.Controller
 
 	// nodeLog is the logger with node context for this service instance.
 	nodeLog *nlog.NodeLog
@@ -53,7 +54,6 @@ type Service struct {
 	pushInterval int // seconds
 	pullInterval int // seconds
 
-	lastUserHash   string     // hash of user list for change detection
 	lastConfigHash string     // hash of full config for change detection
 	pushBackoff    apiBackoff // backoff for panel push failures
 
@@ -176,6 +176,7 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 		limiter:      l,
 		speedTracker: st,
 		cert:         certMgr,
+		users:        userstate.New(l, st),
 		syncer:       nodesync.New(cp),
 		push:         pushsync.New(cp),
 	}
@@ -399,9 +400,9 @@ func (s *Service) markMailboxReadyAndDrain(ctx context.Context) {
 	// Seed mailbox with bootstrap state so delta events can be applied
 	// incrementally instead of always triggering REST reconciliation.
 	s.metricsMu.RLock()
-	users := s.lastUsers
 	config := s.lastConfig
 	s.metricsMu.RUnlock()
+	users := s.users.Users()
 	s.machineMailbox.SeedBaseline(users, config)
 	s.machineMailbox.MarkReady()
 	s.drainMachineMailbox(ctx)
@@ -469,7 +470,7 @@ func (s *Service) handleWSEvent(ctx context.Context, event controlplane.Event) {
 			return
 		}
 		newHash := computeUserHash(event.Users)
-		if newHash == s.lastUserHash {
+		if newHash == s.users.Hash() {
 			return
 		}
 		if s.nodeLog != nil {
@@ -502,107 +503,6 @@ func (s *Service) handleWSEvent(ctx context.Context, event controlplane.Event) {
 	}
 }
 
-// ─── User state helpers ─────────────────────────────────────────────────────
-
-// userStateSource labels the code path that refreshed the user set.
-//
-// The removal probe below depends on this distinction: it answers whether the
-// panel signals a user removal through an explicit sync.user.delta, or merely
-// by omitting the user from a full list. A force-close-on-removal feature only
-// works if the former actually happens in production.
-type userStateSource string
-
-const (
-	srcBootstrap userStateSource = "bootstrap"       // initial handshake
-	srcWSFull    userStateSource = "ws_full"         // WS sync.users (full list)
-	srcPollFull  userStateSource = "poll_full"       // REST poll (full list)
-	srcDeltaAdd  userStateSource = "ws_delta_add"    // WS sync.user.delta action=add
-	srcDeltaRm   userStateSource = "ws_delta_remove" // WS sync.user.delta action=remove
-)
-
-func (s *Service) updateUserState(users []model.UserSpec, src userStateSource) {
-	if users == nil {
-		users = []model.UserSpec{}
-	}
-	_, _ = s.prepareUserState(users, src)
-}
-
-func (s *Service) prepareUserState(users []model.UserSpec, src userStateSource) (prevUsers []model.UserSpec, prevHash string) {
-	if users == nil {
-		users = []model.UserSpec{}
-	}
-
-	s.metricsMu.RLock()
-	prevUsers = append([]model.UserSpec(nil), s.lastUsers...)
-	s.metricsMu.RUnlock()
-	prevHash = s.lastUserHash
-
-	// removed lists users present in the previous set but absent now. The value
-	// was always computed by the limiter but previously discarded.
-	removed := s.limiter.UpdateUsers(users)
-	s.logUserRemovalProbe(removed, src)
-
-	s.speedTracker.UpdateBuckets()
-
-	s.metricsMu.Lock()
-	s.lastUsers = append([]model.UserSpec(nil), users...)
-	s.metricsMu.Unlock()
-	s.lastUserHash = computeUserHash(users)
-	return prevUsers, prevHash
-}
-
-// logUserRemovalProbe is a temporary diagnostic probe.
-//
-// It records every user that vanished from the panel's user list, together with
-// the path that observed it. This settles a question the force-close design
-// hinges on: does the panel signal removal via an explicit sync.user.delta, or
-// simply by omitting the user from a full list?
-//
-// Observation guide:
-//   - source=ws_delta_remove  -> panel uses explicit deltas; a delta-triggered
-//     force-close would fire.
-//   - source=ws_full / poll_full only -> panel drops users by omission; a
-//     delta-only trigger would never fire, and the full-sync + confirmation
-//     approach is required.
-//
-// Delete once that question is answered.
-func (s *Service) logUserRemovalProbe(removed []int, src userStateSource) {
-	if len(removed) == 0 {
-		return
-	}
-	const maxIDs = 20
-	shown, extra := removed, 0
-	if len(shown) > maxIDs {
-		extra = len(shown) - maxIDs
-		shown = shown[:maxIDs]
-	}
-	args := []any{
-		"source", string(src),
-		"removed", len(removed),
-		"user_ids", shown,
-	}
-	if extra > 0 {
-		args = append(args, "more", extra)
-	}
-	if s.nodeLog != nil {
-		s.nodeLog.Info("probe: user removal observed", args...)
-	} else {
-		nlog.Core().Info("probe: user removal observed", args...)
-	}
-}
-
-func (s *Service) restoreUserState(users []model.UserSpec, hash string) {
-	if users == nil {
-		users = []model.UserSpec{}
-	}
-	s.limiter.UpdateUsers(users)
-	s.speedTracker.UpdateBuckets()
-	s.metricsMu.Lock()
-	s.lastUsers = append([]model.UserSpec(nil), users...)
-	s.metricsMu.Unlock()
-	s.lastUserHash = hash
-}
-
 // startKernel starts (or restarts) the kernel with the given config/users and
 // records the successfully applied state. Returns false on error.
 func (s *Service) startKernel(nc *model.NodeSpec, users []model.UserSpec) bool {
@@ -626,183 +526,18 @@ func (s *Service) startKernel(nc *model.NodeSpec, users []model.UserSpec) bool {
 	return true
 }
 
-// ─── User update entry points ───────────────────────────────────────────────
-
-// applyUserUpdate replaces the full user set and hot-swaps the kernel.
-// Called from WS sync.users and REST polling.
-func (s *Service) applyUserUpdate(ctx context.Context, users []model.UserSpec, newHash string, src userStateSource) {
-	prevUsers, prevHash := s.prepareUserState(users, src)
-
-	// A node can legitimately bootstrap with zero users, in which case the
-	// kernel is intentionally not started. The first later user snapshot must
-	// start the kernel with the NEW user set instead of consulting stale
-	// s.lastUsers before prepareUserState has seen the update.
-	if !s.kernel.IsRunning() {
-		if len(users) == 0 || s.lastConfig == nil {
-			return
-		}
-		if !s.startKernel(s.lastConfig, users) {
-			s.restoreUserState(prevUsers, prevHash)
-			return
-		}
-		if newHash != "" {
-			s.lastUserHash = newHash
-		}
-		return
-	}
-
-	added, removed, err := s.kernel.UpdateUsers(users)
-	if err != nil {
-		nlog.Core().Warn(fmt.Sprintf("UpdateUsers failed, restarting kernel: %v", err))
-		if !s.startKernel(s.lastConfig, users) {
-			s.restoreUserState(prevUsers, prevHash)
-		}
-		return
-	}
-	if newHash != "" {
-		s.lastUserHash = newHash
-	}
-	if s.nodeLog != nil && (added > 0 || removed > 0) {
-		s.nodeLog.Info(fmt.Sprintf("users updated: +%d -%d", added, removed))
-	}
-}
-
-// applyUserDelta applies an incremental user change (add or remove) directly
-// via the kernel's atomic user API. Service state is prepared before kernel
-// mutation so limiter lookups are already correct when the kernel applies it.
-func (s *Service) applyUserDelta(ctx context.Context, action string, deltaUsers []model.UserSpec) {
-	switch action {
-	case "add":
-		// Defensive check for empty or nil deltaUsers
-		if deltaUsers == nil || len(deltaUsers) == 0 {
-			return
-		}
-		merged := mergeUsers(s.lastUsers, deltaUsers)
-
-		// If bootstrap had zero users the kernel is still stopped. Seed service
-		// state with the merged delta and start directly from that state.
-		if !s.kernel.IsRunning() {
-			prevUsers, prevHash := s.prepareUserState(merged, srcDeltaAdd)
-			if s.lastConfig == nil {
-				return
-			}
-			if !s.startKernel(s.lastConfig, merged) {
-				s.restoreUserState(prevUsers, prevHash)
-			}
-			return
-		}
-
-		for _, delta := range deltaUsers {
-			for _, old := range s.lastUsers {
-				if old.ID == delta.ID && old.UUID != delta.UUID {
-					s.kernel.RemoveUsers([]model.UserSpec{old})
-					break
-				}
-			}
-		}
-
-		prevUsers, prevHash := s.prepareUserState(merged, srcDeltaAdd)
-		added, err := s.kernel.AddUsers(deltaUsers)
-		if err != nil {
-			nlog.Core().Warn(fmt.Sprintf("AddUsers failed: %v, falling back to UpdateUsers", err))
-			if _, _, err := s.kernel.UpdateUsers(merged); err != nil {
-				nlog.Core().Error(fmt.Sprintf("UpdateUsers fallback failed: %v", err))
-				s.restoreUserState(prevUsers, prevHash)
-				return
-			}
-		}
-		if s.nodeLog != nil && added > 0 {
-			s.nodeLog.Info(fmt.Sprintf("users added: +%d", added))
-		}
-
-	case "remove":
-		// Defensive check for empty or nil deltaUsers
-		if deltaUsers == nil || len(deltaUsers) == 0 {
-			return
-		}
-		filtered := subtractUsers(s.lastUsers, deltaUsers)
-
-		// Keep service state current even when the kernel is stopped, otherwise a
-		// later restart can resurrect users that the panel already removed.
-		if !s.kernel.IsRunning() {
-			s.updateUserState(filtered, srcDeltaRm)
-			return
-		}
-
-		prevUsers, prevHash := s.prepareUserState(filtered, srcDeltaRm)
-		removed, err := s.kernel.RemoveUsers(deltaUsers)
-		if err != nil {
-			nlog.Core().Warn(fmt.Sprintf("RemoveUsers failed: %v, falling back to UpdateUsers", err))
-			if _, _, err := s.kernel.UpdateUsers(filtered); err != nil {
-				nlog.Core().Error(fmt.Sprintf("UpdateUsers fallback failed: %v", err))
-				s.restoreUserState(prevUsers, prevHash)
-				return
-			}
-		}
-		if s.nodeLog != nil && removed > 0 {
-			s.nodeLog.Info(fmt.Sprintf("users removed: -%d", removed))
-		}
-
-	default:
-		nlog.Core().Warn(fmt.Sprintf("unknown user delta action: %s", action))
-	}
-}
-
-// mergeUsers overlays deltaUsers onto base (keyed by ID). New users are
-// appended, existing users have their properties overwritten.
-func mergeUsers(base, delta []model.UserSpec) []model.UserSpec {
-	// Handle nil slices
-	if base == nil {
-		base = []model.UserSpec{}
-	}
-	if delta == nil {
-		return base
-	}
-
-	m := make(map[int]model.UserSpec, len(base))
-	for _, u := range base {
-		m[u.ID] = u
-	}
-	for _, u := range delta {
-		m[u.ID] = u
-	}
-	out := make([]model.UserSpec, 0, len(m))
-	for _, u := range m {
-		out = append(out, u)
-	}
-	return out
-}
-
-// subtractUsers returns base with all users in delta removed.
-func subtractUsers(base, delta []model.UserSpec) []model.UserSpec {
-	if base == nil {
-		return nil
-	}
-	if delta == nil || len(delta) == 0 {
-		return base
-	}
-	removeSet := make(map[int]struct{}, len(delta))
-	for _, u := range delta {
-		removeSet[u.ID] = struct{}{}
-	}
-	out := make([]model.UserSpec, 0, len(base))
-	for _, u := range base {
-		if _, ok := removeSet[u.ID]; !ok {
-			out = append(out, u)
-		}
-	}
-	return out
-}
-
 // applyChanges applies config changes to the kernel. User-only changes are
 // handled by applyUserUpdate/applyUserDelta directly via the atomic user API.
 func (s *Service) applyChanges(ctx context.Context, configChanged, usersChanged bool) {
+	_ = ctx
+	_ = usersChanged
 	if !configChanged {
 		return
 	}
 
-	if s.lastConfig == nil || len(s.lastUsers) == 0 {
-		if len(s.lastUsers) == 0 {
+	users := s.users.Users()
+	if s.lastConfig == nil || len(users) == 0 {
+		if len(users) == 0 {
 			s.kernel.Stop()
 			s.appliedState.Users = nil
 		}
@@ -812,18 +547,18 @@ func (s *Service) applyChanges(ctx context.Context, configChanged, usersChanged 
 	// If config changed, delegate to kernel.Reload. The kernel implementation
 	// decides whether to hot-swap users, reconstruct inbounds, or restart itself.
 	if configChanged && s.kernel.IsRunning() {
-		if err := s.kernel.Reload(s.lastConfig, s.lastUsers, s.cert.TLSCert()); err != nil {
+		if err := s.kernel.Reload(s.lastConfig, users, s.cert.TLSCert()); err != nil {
 			nlog.Core().Warn(fmt.Sprintf("reload failed, restarting: %v", err))
-			s.startKernel(s.lastConfig, s.lastUsers)
+			s.startKernel(s.lastConfig, users)
 		} else {
 			s.appliedState.Config = s.lastConfig
-			s.appliedState.Users = s.lastUsers
+			s.appliedState.Users = append([]model.UserSpec(nil), users...)
 			if s.nodeLog != nil {
-				s.nodeLog.Info(fmt.Sprintf("config updated, %d users", len(s.lastUsers)))
+				s.nodeLog.Info(fmt.Sprintf("config updated, %d users", len(users)))
 			}
 		}
 	} else if !s.kernel.IsRunning() {
-		s.startKernel(s.lastConfig, s.lastUsers)
+		s.startKernel(s.lastConfig, users)
 	}
 }
 
@@ -912,9 +647,10 @@ func (s *Service) pushReportSync() {
 // This includes active connections, per-core CPU, GC stats, API call stats,
 // WebSocket status, and limiter hit counts.
 func (s *Service) buildMetrics(status monitor.Status) map[string]interface{} {
-	s.metricsMu.RLock()
-	lastUsers := s.lastUsers
-	s.metricsMu.RUnlock()
+	totalUsers := 0
+	if s.users != nil {
+		totalUsers = s.users.Count()
+	}
 
 	m := make(map[string]interface{})
 	online := s.tracker.CurrentOnline()
@@ -926,7 +662,7 @@ func (s *Service) buildMetrics(status monitor.Status) map[string]interface{} {
 	m["active_connections"] = s.tracker.ActiveConnections()
 	m["total_connections"] = s.tracker.TotalConnections()
 	m["active_users"] = len(online)
-	m["total_users"] = len(lastUsers)
+	m["total_users"] = totalUsers
 
 	// Speed
 	m["inbound_speed"] = s.tracker.InboundSpeed()
