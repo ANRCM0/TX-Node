@@ -69,3 +69,42 @@ Before enabling a TuneX provider, define its authentication, bootstrap, configur
 ## Compatibility principle
 
 Xboard support is a protocol compatibility feature, not the identity of TX-Node. Removing Xboard compatibility is not required for TX-Node to evolve independently; keeping that compatibility isolated behind an adapter is the goal.
+
+
+## Machine Runtime Update v1
+
+Machine-mode deployments can optionally expose a bounded runtime update bridge installed by **TX-Node-Installer**.
+
+The control flow is:
+
+```text
+TXBoard Machine Admin
+  -> machine-scoped WebSocket event
+  -> TX-Node runtimeupdate.Manager
+  -> fixed /run/txnode-update request
+  -> Installer-owned host bridge
+  -> Installer upgrade / verification / rollback
+```
+
+TX-Node does not receive the Docker socket and does not execute a control-plane supplied command. The only v1 target is `latest`.
+
+The machine WebSocket event is:
+
+```text
+ops.machine.runtime.update
+```
+
+with:
+
+```json
+{
+  "request_id": "mup_...",
+  "target": "latest"
+}
+```
+
+When the Installer capability marker is absent, TX-Node reports `updater_available=false` and rejects the request without writing an update file.
+
+Machine status reports runtime-derived metadata additively through the existing `POST /api/v2/server/machine/status` heartbeat, including current build version, updater availability, and the bounded last Installer update status.
+
+This is separate from per-node Node Ops. A machine runtime update restarts the TX-Node deployment and can briefly disconnect every node hosted by that machine.
