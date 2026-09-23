@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/cert"
+	"github.com/PaiMonCai/TX-Node/internal/certcoord"
 	"github.com/PaiMonCai/TX-Node/internal/config"
 	"github.com/PaiMonCai/TX-Node/internal/controlplane"
 	"github.com/PaiMonCai/TX-Node/internal/nodesync"
@@ -49,7 +49,7 @@ func TestHandlePushStatusKeepsTransportStateOutOfService(t *testing.T) {
 	s.source = cp
 	s.sink = cp
 	s.cfg = &config.Config{}
-	s.cert = cert.NewManager(config.CertConfig{})
+	s.certs = certcoord.New(config.CertConfig{})
 	s.syncer = nodesync.New(cp)
 	s.push = pushsync.New(cp)
 
@@ -73,7 +73,7 @@ func TestHandlePushStatusReconnectDoesNotClearDevices(t *testing.T) {
 	s.source = cp
 	s.sink = cp
 	s.cfg = &config.Config{}
-	s.cert = cert.NewManager(config.CertConfig{})
+	s.certs = certcoord.New(config.CertConfig{})
 	s.syncer = nodesync.New(cp)
 	s.push = pushsync.New(cp)
 
