@@ -1,6 +1,6 @@
 # TX-Node S4 Compatibility Inventory
 
-Status: **S4-A assessment baseline — no retirement authorized**
+Status: **S4-D retirement implementation in progress**
 
 This document inventories TX-Node compatibility surfaces after Runtime Simplification S1–S3.
 
@@ -8,7 +8,7 @@ S4 follows the project rule:
 
 > compatibility first, migration second, retirement last.
 
-Nothing in this document removes a feature, stops publishing an artifact, changes a protocol, or authorizes a breaking release.
+The operator has authorized retirement of the historical host-management/release aliases. Protocol compatibility and standalone behavior remain separate decisions.
 
 ## 1. Canonical product path
 
@@ -56,8 +56,8 @@ Compatibility surfaces are classified as:
 | `tx-node` binary identity | canonical runtime identity | `cmd/tx-node` | none | not a retirement target |
 | panel-connected single-node mode | frozen compatibility | TX-Node Service + Xboard adapter | TXBoard Machine mode where available | existing non-Machine panel deployments; no forced migration window defined |
 | Local / standalone ControlPlane | frozen compatibility | TX-Node local ControlPlane/config/model | no exact replacement | offline/local use is semantically different from TXBoard Machine mode |
-| `xboard-node` binary alias/artifact | frozen compatibility; retirement candidate | Makefile / release workflow | `tx-node` | old scripts, systemd units and automation may invoke the old name |
-| `xbctl` | frozen compatibility; retirement candidate | `cmd/xbctl` / release workflow | Installer-owned `txnode` command | existing native/systemd installs may still depend on it |
+| `xboard-node` binary alias/artifact | retired from v2 mainline | historical release workflow | `tx-node` | Installer migration remains for old hosts |
+| `xbctl` | retired from v2 mainline | historical TX-Node CLI | Installer-owned `txnode` command | Installer migration/cleanup remains for old hosts |
 | legacy `/etc/xboard-node` layout | migration source; retirement candidate | historical native install compatibility | Installer `/etc/txnode` layout | migration/import support must remain available for existing hosts |
 | `xboard-node.service` native systemd layout | migration source; retirement candidate | historical native deployment | Installer Docker deployment | existing services may still be running; safe import/rollback must be proven |
 | `/usr/local/bin/xboard-node` native binary path | migration source; retirement candidate | historical native deployment | official container / `tx-node` identity | old service definitions and operator scripts may reference the path |
@@ -72,9 +72,10 @@ cmd/tx-node
    -> tx-node
 ```
 
-This source-path cleanup does **not** remove the published `xboard-node`
-compatibility artifact/alias yet. Release and host compatibility are separate
-retirement steps and remain subject to the S4 gates below.
+The v2 retirement step now also stops building/publishing the historical
+`xboard-node` artifact and removes `xbctl` from TX-Node. Existing native
+installs are handled by Installer-owned migrate/legacy-cleanup paths rather
+than by shipping the old host manager forever.
 
 ## 4. Important distinction: protocol compatibility is not deployment legacy
 
@@ -192,11 +193,9 @@ For host deployment migrations, operators must be able to recover from a failed 
 
 ## 8. Freeze policy
 
-The following surfaces are frozen for feature expansion:
+The following remaining surfaces are frozen for feature expansion:
 
-- `xbctl`;
-- `xboard-node` compatibility alias;
-- native/systemd deployment behavior;
+- native/systemd deployment behavior as migration input;
 - legacy `/etc/xboard-node` paths;
 - Local/standalone management surfaces;
 - panel-connected legacy single-node-first workflows.
@@ -246,11 +245,21 @@ Add lightweight regression checks that make accidental feature growth on legacy 
 
 This must not prevent security or migration fixes.
 
-### S4-D — versioned retirement proposal
+### S4-D — versioned retirement implementation
 
-Only after Gates A–E have enough evidence.
+Authorized retirement scope:
 
-A retirement proposal is documentation/contract work first. Deletion comes in later migration PRs.
+- remove `xbctl` source/build/release output from TX-Node;
+- stop producing the `xboard-node` binary/release alias;
+- keep legacy native/systemd detection, import and cleanup in TX-Node-Installer;
+- migrate the container config path to `/etc/txnode` in a separate cross-repo
+  step with a bounded fallback for already-generated Compose files.
+
+Not authorized by this step:
+
+- Xboard ControlPlane protocol removal;
+- standalone removal;
+- single-node protocol removal.
 
 ## 10. Non-goals
 
