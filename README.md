@@ -13,12 +13,12 @@ TX-Node 支持 `sing-box` / `xray-core` 双内核。安装、升级、回滚与�
 TX-Node 私有仓库只维护**运行时源码、构建、测试与发布**。安装、升级、多面板实例、隔离实例和主机运维脚本统一由公开仓库维护：
 
 **TX-Node Installer**  
-https://github.com/PaiMonCai/TX-Node-Installer
+https://github.com/ANRCM0/TX-Node-Installer
 
 推荐安装入口：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/PaiMonCai/TX-Node-Installer/main/deploy.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/ANRCM0/TX-Node-Installer/main/deploy.sh)
 ```
 
 TXBoard 生成的非交互安装命令同样使用公开 Installer。运行时镜像仍由本仓库 CI 构建并发布到：
@@ -124,7 +124,7 @@ WARN [core] audit: report_all=false — only rule-matched targets are reported;
 
 AccessAudit 是**可选的面板插件**，其唯一源码位于 TXBoard：
 
-- 插件源码：[PaiMonCai/TXBoard → integrations/AccessAudit](https://github.com/PaiMonCai/TXBoard/tree/main/integrations/AccessAudit)
+- 插件源码：[ANRCM0/TXBoard → integrations/AccessAudit](https://github.com/ANRCM0/TXBoard/tree/main/integrations/AccessAudit)
 - TX-Node 只保留可选的审计 reporter/client，用于拉取规则和上报事件。
 - TX-Node 不再 vendor、构建或随 Release 打包面板插件。
 - 面板未安装/启用 AccessAudit 时，请保持 `audit.enabled: false`；核心节点、流量与状态上报不受影响。

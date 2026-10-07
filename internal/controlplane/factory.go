@@ -1,6 +1,6 @@
 package controlplane
 
-import "github.com/PaiMonCai/TX-Node/internal/config"
+import "github.com/ANRCM0/TX-Node/internal/config"
 
 // Provider identifies the protocol family backing a control-plane adapter.
 type Provider string

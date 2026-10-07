@@ -4,7 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 // Limiter enforces per-user device limits and detects removed users.

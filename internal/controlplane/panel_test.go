@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	panelapi "github.com/PaiMonCai/TX-Node/internal/panel"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	panelapi "github.com/ANRCM0/TX-Node/internal/panel"
 )
 
 func TestPanelControlPlaneInitialRejectsInvalidCustomOutbounds(t *testing.T) {

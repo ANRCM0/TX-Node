@@ -6,10 +6,10 @@ import (
 	"encoding/pem"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/kernel"
-	"github.com/PaiMonCai/TX-Node/internal/model"
-	"github.com/PaiMonCai/TX-Node/internal/panel"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/kernel"
+	"github.com/ANRCM0/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/panel"
 )
 
 var testKernelCfg = config.KernelConfig{

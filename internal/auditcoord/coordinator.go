@@ -1,10 +1,10 @@
 package auditcoord
 
 import (
-	"github.com/PaiMonCai/TX-Node/internal/audit"
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/controlplane"
-	"github.com/PaiMonCai/TX-Node/internal/nlog"
+	"github.com/ANRCM0/TX-Node/internal/audit"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/controlplane"
+	"github.com/ANRCM0/TX-Node/internal/nlog"
 )
 
 const (

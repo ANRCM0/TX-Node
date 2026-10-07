@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/panel"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/panel"
 )
 
 func TestNodeSpecFromPanelValidated_AllowsTargetsFromCustomConfigOutbounds(t *testing.T) {

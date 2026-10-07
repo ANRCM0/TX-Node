@@ -1,6 +1,6 @@
 package panel
 
-import "github.com/PaiMonCai/TX-Node/internal/config"
+import "github.com/ANRCM0/TX-Node/internal/config"
 
 // Identity returns a read-only snapshot of the Xboard connection identity used
 // by this client. It exists so protocol adapters can expose optional

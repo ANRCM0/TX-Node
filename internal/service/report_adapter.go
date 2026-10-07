@@ -1,10 +1,10 @@
 package service
 
 import (
-	"github.com/PaiMonCai/TX-Node/internal/controlplane"
-	"github.com/PaiMonCai/TX-Node/internal/monitor"
-	"github.com/PaiMonCai/TX-Node/internal/nlog"
-	"github.com/PaiMonCai/TX-Node/internal/reporting"
+	"github.com/ANRCM0/TX-Node/internal/controlplane"
+	"github.com/ANRCM0/TX-Node/internal/monitor"
+	"github.com/ANRCM0/TX-Node/internal/nlog"
+	"github.com/ANRCM0/TX-Node/internal/reporting"
 )
 
 func (s *Service) prepareReportBatch() reporting.Batch {

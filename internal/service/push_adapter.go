@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/PaiMonCai/TX-Node/internal/controlplane"
-	"github.com/PaiMonCai/TX-Node/internal/nlog"
-	"github.com/PaiMonCai/TX-Node/internal/pushsync"
+	"github.com/ANRCM0/TX-Node/internal/controlplane"
+	"github.com/ANRCM0/TX-Node/internal/nlog"
+	"github.com/ANRCM0/TX-Node/internal/pushsync"
 )
 
 const pushRediscoveryAfter = 10 * time.Minute

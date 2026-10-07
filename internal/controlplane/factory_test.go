@@ -3,7 +3,7 @@ package controlplane
 import (
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/config"
 )
 
 func TestProviderForConfig(t *testing.T) {

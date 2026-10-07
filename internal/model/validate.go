@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/config"
 )
 
 func ValidateNodeSpec(n *NodeSpec, kcfg config.KernelConfig) error {

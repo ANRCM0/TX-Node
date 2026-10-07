@@ -3,10 +3,10 @@ package geoassets
 import (
 	"os"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/kernel"
-	"github.com/PaiMonCai/TX-Node/internal/kernel/geodata"
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/kernel"
+	"github.com/ANRCM0/TX-Node/internal/kernel/geodata"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 // Backend is the existing geo-data acquisition runtime.

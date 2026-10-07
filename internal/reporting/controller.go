@@ -4,7 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/PaiMonCai/TX-Node/internal/controlplane"
+	"github.com/ANRCM0/TX-Node/internal/controlplane"
 )
 
 // Batch is one immutable report submission prepared by the Service adapter.

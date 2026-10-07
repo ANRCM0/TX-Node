@@ -1,8 +1,8 @@
 package model
 
 import (
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/panel"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/panel"
 )
 
 func NodeSpecFromPanel(nc *panel.NodeConfig) *NodeSpec {

@@ -3,8 +3,8 @@ package controlplane
 import (
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/panel"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/panel"
 )
 
 func TestXboardAuditTarget(t *testing.T) {

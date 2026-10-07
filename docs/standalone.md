@@ -4,7 +4,7 @@ TX-Node is maintained as an independent project. It originated from Xboard-Node 
 
 ## Source of truth
 
-- `PaiMonCai/TX-Node` is the source of truth for development and releases.
+- `ANRCM0/TX-Node` is the source of truth for development and releases.
 - `main` is the product mainline.
 - Releases are created from semantic `v*` tags only.
 - Upstream repositories are references for fixes and ideas, not merge targets.
@@ -60,19 +60,19 @@ Canonical TX-Node-facing identities are:
 
 - node binary: `tx-node`;
 - Docker image: `ghcr.io/paimoncai/tx-node`;
-- runtime source/release repository: `PaiMonCai/TX-Node`;
-- installation and host-management entry point: public `PaiMonCai/TX-Node-Installer`.
+- runtime source/release repository: `ANRCM0/TX-Node`;
+- installation and host-management entry point: public `ANRCM0/TX-Node-Installer`.
 
 The runtime repository intentionally does not carry an installer copy. Host deployment layout such as `/etc/txnode`, the `txnode` management command, multi-panel instance management, backup/rollback, and Docker Compose generation are owned by TX-Node-Installer.
 
-`xbctl` is intentionally **not** renamed to `txctl` yet. Its service/configuration model still targets the legacy systemd installation layout, while its release download source now points to `PaiMonCai/TX-Node`. A future `txctl` should be introduced only after the management CLI is redesigned around the current TX-Node deployment model.
+`xbctl` is intentionally **not** renamed to `txctl` yet. Its service/configuration model still targets the legacy systemd installation layout, while its release download source now points to `ANRCM0/TX-Node`. A future `txctl` should be introduced only after the management CLI is redesigned around the current TX-Node deployment model.
 
 ## Go module identity
 
 The Go module and TX-Node self-imports use:
 
 ```text
-github.com/PaiMonCai/TX-Node
+github.com/ANRCM0/TX-Node
 ```
 
 This source-identity change does not alter Xboard panel protocol compatibility.
@@ -81,8 +81,8 @@ This source-identity change does not alter Xboard panel protocol compatibility.
 
 TX-Node no longer depends on `cedar2025`-owned kernel forks. The current replacements are TX-Node-maintained forks:
 
-- `github.com/PaiMonCai/sing-box`, with the current Mieru patch baseline retained on `tx-mieru`;
-- `github.com/PaiMonCai/Xray-core`, with the current per-user bandwidth patch baseline retained on `tx-bandwidth`.
+- `github.com/ANRCM0/sing-box`, with the current Mieru patch baseline retained on `tx-mieru`;
+- `github.com/ANRCM0/Xray-core`, with the current per-user bandwidth patch baseline retained on `tx-bandwidth`.
 
 The pinned commits are intentionally unchanged from the previously validated cedar fork revisions. Kernel upgrades are developed separately on `upgrade/sing-box-2026q3` and `upgrade/xray-core-2026q3`, with upstream changes reviewed and the small TX patch set reapplied/tested explicitly.
 

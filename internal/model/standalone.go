@@ -1,6 +1,6 @@
 package model
 
-import "github.com/PaiMonCai/TX-Node/internal/config"
+import "github.com/ANRCM0/TX-Node/internal/config"
 
 func NodeSpecFromStandalone(cfg *config.Config) *NodeSpec {
 	sc := cfg.Standalone

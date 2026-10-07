@@ -1,8 +1,8 @@
 package controlplane
 
 import (
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/panel"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/panel"
 )
 
 // XboardControlPlane is the canonical TX-Node name for the Xboard-compatible

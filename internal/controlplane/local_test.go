@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/config"
 )
 
 func TestLocalControlPlaneInitial(t *testing.T) {

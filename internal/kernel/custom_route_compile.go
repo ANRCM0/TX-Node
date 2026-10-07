@@ -3,7 +3,7 @@ package kernel
 import (
 	"strings"
 
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 func NeedsGeoIPRules(rules []model.CustomRouteRule) bool {

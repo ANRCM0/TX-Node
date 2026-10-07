@@ -3,8 +3,8 @@ package kernellifecycle
 import (
 	"sync"
 
-	"github.com/PaiMonCai/TX-Node/internal/kernel"
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/kernel"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 // AppliedState describes the last full config/user state successfully applied

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 func TestSpeedTracker_UpdateBuckets(t *testing.T) {

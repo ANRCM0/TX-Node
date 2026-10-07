@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 func TestValidateNodeConfigIgnoresNonDNSModes(t *testing.T) {

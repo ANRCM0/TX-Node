@@ -3,7 +3,7 @@ package model
 import (
 	"strings"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/config"
 )
 
 type NodeSpec struct {

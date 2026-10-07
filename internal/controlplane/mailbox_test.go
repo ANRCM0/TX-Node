@@ -3,7 +3,7 @@ package controlplane
 import (
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 func TestNodeMailboxLatestStateAndNotifyCollapse(t *testing.T) {

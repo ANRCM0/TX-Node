@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/config"
 )
 
 func newTestServer(handler http.HandlerFunc) (*httptest.Server, *Client) {

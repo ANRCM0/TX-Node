@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/model"
 	"github.com/xtls/xray-core/common/buf"
 	"github.com/xtls/xray-core/transport"
 )

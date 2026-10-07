@@ -3,8 +3,8 @@ package userstate
 import (
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/limiter"
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/limiter"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 func newController() (*Controller, *limiter.SpeedTracker) {

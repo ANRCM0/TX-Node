@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PaiMonCai/TX-Node/internal/cert/dnsproviders"
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/cert/dnsproviders"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 // ValidateNodeConfig validates certificate-runtime compatibility declared by a

@@ -3,7 +3,7 @@ package singbox
 import (
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 func TestApplyProxyProtocolDisabledByDefault(t *testing.T) {

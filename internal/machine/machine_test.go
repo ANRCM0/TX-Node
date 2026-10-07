@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/controlplane"
-	"github.com/PaiMonCai/TX-Node/internal/panel"
-	"github.com/PaiMonCai/TX-Node/internal/runtimeupdate"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/controlplane"
+	"github.com/ANRCM0/TX-Node/internal/panel"
+	"github.com/ANRCM0/TX-Node/internal/runtimeupdate"
 )
 
 // newTestOrchestrator builds an Orchestrator without touching the network.

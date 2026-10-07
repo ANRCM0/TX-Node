@@ -28,11 +28,11 @@ import (
 
 	_ "github.com/xtls/xray-core/main/distro/all"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/geoassets"
-	"github.com/PaiMonCai/TX-Node/internal/kernel"
-	"github.com/PaiMonCai/TX-Node/internal/nlog"
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/geoassets"
+	"github.com/ANRCM0/TX-Node/internal/kernel"
+	"github.com/ANRCM0/TX-Node/internal/nlog"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 const (

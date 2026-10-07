@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/PaiMonCai/TX-Node/internal/config"
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/config"
+	"github.com/ANRCM0/TX-Node/internal/model"
 	appstats "github.com/xtls/xray-core/app/stats"
 	xrayCore "github.com/xtls/xray-core/core"
 	featurebandwidth "github.com/xtls/xray-core/features/bandwidth"

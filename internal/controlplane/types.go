@@ -3,7 +3,7 @@ package controlplane
 import (
 	"context"
 
-	"github.com/PaiMonCai/TX-Node/internal/model"
+	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
 type EventType string
