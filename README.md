@@ -24,7 +24,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ANRCM0/TX-Node-Installer/mai
 TXBoard 生成的非交互安装命令同样使用公开 Installer。运行时镜像仍由本仓库 CI 构建并发布到：
 
 ```text
-ghcr.io/paimoncai/tx-node:latest
+ghcr.io/ANRCM0/tx-node:latest
 ```
 
 公开 Installer 与私有运行时仓库的职责边界：
