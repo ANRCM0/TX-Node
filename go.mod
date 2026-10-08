@@ -265,4 +265,4 @@ require (
 // Retain the required Mieru and Xray per-user bandwidth patches.
 replace github.com/sagernet/sing-box => github.com/ANRCM0/sing-box v0.0.0-20260917154452-6184aa2cd055
 
-replace github.com/xtls/xray-core => github.com/ANRCM0/Xray-core v0.0.0-20261008033212-5793eb993313
+replace github.com/xtls/xray-core => github.com/ANRCM0/Xray-core v0.0.0-20261008033525-867967fac148
