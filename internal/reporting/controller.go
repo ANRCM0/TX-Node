@@ -38,6 +38,7 @@ type Controller struct {
 
 	pendingMu sync.Mutex
 	pending   *Batch
+	spool     *batchSpool
 }
 
 var fallbackNonce atomic.Uint64
@@ -54,35 +55,61 @@ func newReportBatchID() string {
 // Pending traffic is NOT returned to the tracker after an ambiguous HTTP
 // failure. Replaying a byte-identical payload with the same ID is the only
 // safe way to distinguish a lost response from a failed commit.
-func (c *Controller) nextBatch(prepare PrepareFunc) Batch {
+func (c *Controller) nextBatch(prepare PrepareFunc) (Batch, error) {
 	c.pendingMu.Lock()
 	defer c.pendingMu.Unlock()
 	if c.pending != nil {
-		return *c.pending
+		return *c.pending, nil
 	}
 
 	batch := prepare()
 	if len(batch.Payload.Traffic) > 0 {
 		batch.Payload.BatchID = newReportBatchID()
+		if c.spool != nil {
+			if err := c.spool.save(batch); err != nil {
+				// Nothing was delivered. Return untagged traffic so the
+				// adapter can restore it for a later safe retry.
+				batch.Payload.BatchID = ""
+				return batch, fmt.Errorf("persist traffic batch: %w", err)
+			}
+		}
 		snapshot := batch
 		c.pending = &snapshot
 	}
-	return batch
+	return batch, nil
 }
 
-func (c *Controller) acknowledge(batch Batch) {
+func (c *Controller) acknowledge(batch Batch) error {
 	if batch.Payload.BatchID == "" {
-		return
+		return nil
 	}
 	c.pendingMu.Lock()
 	defer c.pendingMu.Unlock()
 	if c.pending != nil && c.pending.Payload.BatchID == batch.Payload.BatchID {
+		// A failed unlink leaves the same batch available for replay.
+		if c.spool != nil {
+			if err := c.spool.clear(); err != nil {
+				return fmt.Errorf("clear acknowledged batch: %w", err)
+			}
+		}
 		c.pending = nil
 	}
+	return nil
 }
 
 func New(sink controlplane.Sink) *Controller {
 	return &Controller{sink: sink}
+}
+
+// NewDurable fails closed if the pending batch cannot be loaded or the
+// configured directory cannot be written. Callers must surface the error
+// rather than silently reverting to memory-only acknowledgements.
+func NewDurable(sink controlplane.Sink, path string) (*Controller, error) {
+	spool, pending, err := openBatchSpool(path)
+	if err != nil {
+		return nil, err
+	}
+	return &Controller{sink: sink, spool: spool, pending: pending}, nil
 }
 
 func (c *Controller) SupportsReporting() bool {
@@ -109,7 +136,15 @@ func (c *Controller) PushAsync(
 		return false
 	}
 
-	batch := c.nextBatch(prepare)
+	batch, err := c.nextBatch(prepare)
+	if err != nil {
+		c.backoff.onFailure()
+		c.active.Store(false)
+		if onFailure != nil {
+			onFailure(batch, err)
+		}
+		return false
+	}
 	go func() {
 		defer c.active.Store(false)
 
@@ -127,7 +162,15 @@ func (c *Controller) PushAsync(
 			return
 		}
 
-		c.acknowledge(batch)
+		if err := c.acknowledge(batch); err != nil {
+			c.backoff.onFailure()
+			if onFailure != nil {
+				failureNotice := batch
+				failureNotice.Payload.Traffic = nil
+				onFailure(failureNotice, err)
+			}
+			return
+		}
 		c.backoff.onSuccess()
 		if onSuccess != nil {
 			onSuccess(batch)
@@ -147,17 +190,27 @@ func (c *Controller) PushSync(prepare PrepareFunc) error {
 	c.pendingMu.Lock()
 	hadPending := c.pending != nil
 	c.pendingMu.Unlock()
-	batch := c.nextBatch(prepare)
+	batch, err := c.nextBatch(prepare)
+	if err != nil {
+		return err
+	}
 	if err := c.sink.Report(batch.Payload); err != nil {
 		return err
 	}
-	c.acknowledge(batch)
+	if err := c.acknowledge(batch); err != nil {
+		return err
+	}
 	if hadPending {
-		next := c.nextBatch(prepare)
+		next, err := c.nextBatch(prepare)
+		if err != nil {
+			return err
+		}
 		if err := c.sink.Report(next.Payload); err != nil {
 			return err
 		}
-		c.acknowledge(next)
+		if err := c.acknowledge(next); err != nil {
+			return err
+		}
 	}
 	return nil
 }

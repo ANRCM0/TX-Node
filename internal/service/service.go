@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +54,7 @@ type Service struct {
 	lastConfigHash string // hash of full config for change detection
 	syncer         *nodesync.Controller
 	reporter       *reporting.Controller
+	reporterInitErr error
 
 	push             *pushsync.Controller
 	machineMailbox   *controlplane.NodeMailbox
@@ -96,7 +100,19 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 	// kernel-specific attachment logic.
 	auditcoord.Attach(cfg.Audit, cp, k)
 
+	reporter := reporting.New(cp)
+	var reporterInitErr error
+	if cfg.Kernel.ConfigDir != "" && !cfg.IsStandalone() {
+		// The directory must be a persistent writable volume; no traffic
+		// is acknowledged unless the pending batch is durably spooled first.
+		key := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%s",
+			cfg.Panel.URL, cfg.Panel.NodeID, cfg.Panel.MachineID, cfg.InstanceID)))
+		path := filepath.Join(cfg.Kernel.ConfigDir,
+			".txnode-traffic-"+hex.EncodeToString(key[:12])+".pending.json")
+		reporter, reporterInitErr = reporting.NewDurable(cp, path)
+	}
 	s := &Service{
+		reporterInitErr: reporterInitErr,
 		cfg:          cfg,
 		source:       cp,
 		sink:         cp,
@@ -109,13 +125,16 @@ func newService(cfg *config.Config, cp controlplane.ControlPlane) *Service {
 		users:        userstate.New(l, st),
 		syncer:       nodesync.New(cp),
 		push:         pushsync.New(cp),
-		reporter:     reporting.New(cp),
+		reporter:     reporter,
 	}
 	s.ops = nodeops.New(serviceOpsRuntime{service: s}, s.sendOpsResult)
 	return s
 }
 
 func (s *Service) Run(ctx context.Context) error {
+	if s.reporterInitErr != nil {
+		return fmt.Errorf("durable traffic report spool initialization failed: %w", s.reporterInitErr)
+	}
 	// Start cert manager (handles auto-TLS or manual cert verification)
 	if err := s.certs.Start(ctx); err != nil {
 		return fmt.Errorf("cert manager: %w", err)
