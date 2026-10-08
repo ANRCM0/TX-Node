@@ -14,13 +14,15 @@ type fakeSink struct {
 	supported bool
 	calls     int
 	err       error
+	batchIDs  []string
 	started   chan struct{}
 	release   chan struct{}
 }
 
-func (f *fakeSink) Report(controlplane.ReportPayload) error {
+func (f *fakeSink) Report(payload controlplane.ReportPayload) error {
 	f.mu.Lock()
 	f.calls++
+	f.batchIDs = append(f.batchIDs, payload.BatchID)
 	started := f.started
 	release := f.release
 	err := f.err
@@ -99,7 +101,7 @@ func TestPushAsyncFailureInvokesRestoreAndBackoff(t *testing.T) {
 
 	if !controller.PushAsync(prepare, func(batch Batch, err error) {
 		failures++
-		if len(batch.Payload.Traffic) != 1 || err == nil {
+		if len(batch.Payload.Traffic) != 0 || err == nil {
 			t.Fatalf("unexpected failure callback: %#v %v", batch, err)
 		}
 	}, nil) {
@@ -178,5 +180,51 @@ func TestUnsupportedSinkDoesNotPrepare(t *testing.T) {
 	}
 	if prepares != 0 || sink.callCount() != 0 {
 		t.Fatalf("unexpected work prepares=%d calls=%d", prepares, sink.callCount())
+	}
+}
+
+func TestAmbiguousFailureRetriesSameBatchIDWithoutFlushingNewTraffic(t *testing.T) {
+	sink := &fakeSink{supported: true, err: errors.New("lost acknowledgement")}
+	controller := New(sink)
+	prepares := 0
+	prepare := func() Batch {
+		prepares++
+		return Batch{Payload: controlplane.ReportPayload{
+			Traffic: map[int][2]int64{7: {123, 456}},
+		}, TrafficCount: 1}
+	}
+	fail := make(chan struct{}, 1)
+	if !controller.PushAsync(prepare, func(batch Batch, err error) {
+		if len(batch.Payload.Traffic) > 0 {
+			t.Error("ambiguous batch must not be restored into counter accumulator")
+		}
+		fail <- struct{}{}
+	}, nil) {
+		t.Fatal("initial attempt rejected")
+	}
+	<-fail
+	for controller.Active() {
+		time.Sleep(time.Millisecond)
+	}
+	// Backoff excludes one attempt without touching tracker data.
+	if controller.PushAsync(prepare, nil, nil) {
+		t.Fatal("backoff not applied")
+	}
+	sink.mu.Lock()
+	sink.err = nil
+	sink.mu.Unlock()
+	success := make(chan struct{}, 1)
+	if !controller.PushAsync(prepare, nil, func(Batch) { success <- struct{}{} }) {
+		t.Fatal("retry rejected")
+	}
+	<-success
+	sink.mu.Lock()
+	ids := append([]string(nil), sink.batchIDs...)
+	sink.mu.Unlock()
+	if len(ids) != 2 || ids[0] == "" || ids[0] != ids[1] {
+		t.Fatalf("replay IDs are not stable: %#v", ids)
+	}
+	if prepares != 1 {
+		t.Fatalf("retry should not flush a new tracker batch; prepares = %d", prepares)
 	}
 }

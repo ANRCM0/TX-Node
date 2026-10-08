@@ -101,7 +101,7 @@ func TestPrepareReportBatchBuildsExistingPayloadShape(t *testing.T) {
 	}
 }
 
-func TestPushReportAsyncRestoresTrafficAfterFailure(t *testing.T) {
+func TestPushReportAsyncRetainsIdentifiedPayloadAfterAmbiguousFailure(t *testing.T) {
 	cp := &reportTestControlPlane{err: errors.New("panel unavailable")}
 	k := &fakeKernel{running: true}
 	s := newReportingTestService(k, cp)
@@ -121,11 +121,26 @@ func TestPushReportAsyncRestoresTrafficAfterFailure(t *testing.T) {
 	if s.reporter.Active() {
 		t.Fatal("report did not finish")
 	}
-	if !s.tracker.HasTraffic() {
-		t.Fatal("failed async report did not restore traffic")
+	if s.tracker.HasTraffic() {
+		t.Fatal("ambiguous failure must not restore traffic into the accumulator")
 	}
-	if calls, _ := cp.snapshot(); calls != 1 {
-		t.Fatalf("report calls = %d, want 1", calls)
+	calls, first := cp.snapshot()
+	if calls != 1 || first.BatchID == "" || len(first.Traffic) != 1 {
+		t.Fatalf("report failed to retain identified payload: calls=%d, payload=%#v", calls, first)
+	}
+	// First retry is skipped by bounded backoff.
+	s.pushReportAsync()
+	cp.mu.Lock()
+	cp.err = nil
+	cp.mu.Unlock()
+	s.pushReportAsync()
+	deadline = time.Now().Add(time.Second)
+	for s.reporter.Active() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	calls, replay := cp.snapshot()
+	if calls != 2 || replay.BatchID != first.BatchID || len(replay.Traffic) != 1 {
+		t.Fatalf("retry did not reuse payload identity: calls=%d, old=%#v, new=%#v", calls, first, replay)
 	}
 }
 

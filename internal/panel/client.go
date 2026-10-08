@@ -109,8 +109,12 @@ func (c *Client) Handshake() (*HandshakeResponse, error) {
 func (c *Client) Report(traffic map[int][2]int64, alive map[int][]string, online map[int]int,
 	cpu float64, mem, swap, disk [2]uint64,
 	metrics map[string]interface{},
+	batchID ...string,
 ) error {
 	payload := make(map[string]interface{})
+	if len(batchID) > 0 && batchID[0] != "" && len(traffic) > 0 {
+		payload["traffic_batch_id"] = batchID[0]
+	}
 
 	if len(traffic) > 0 {
 		t := trafficMapPool.Get().(map[string][2]int64)
