@@ -33,5 +33,12 @@ jobs:
           else
             echo "Historical bandwidth feature absent"
           fi
+          echo "=== Historical integration in dispatcher ==="
+          sed -n '1,48p' "$old/app/dispatcher/default.go"
+          sed -n '252,370p' "$old/app/dispatcher/default.go"
+          echo "=== Historical integration in core ==="
+          grep -n -C 24 'bandwidth' "$old/core/xray.go"
+          echo "=== Historical rate-limit tests ==="
+          sed -n '1,260p' "$old/app/dispatcher/ratelimit_test.go"
           echo "=== Historical bandwidth import sites ==="
           grep -Rn -E 'features/bandwidth|SetUserLimit|SetUserLimiter|GetUserLimiter' "$old/app" "$old/proxy" "$old/core" 2>/dev/null | head -100 || true
