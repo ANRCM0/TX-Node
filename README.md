@@ -49,6 +49,16 @@ make build-all
 make docker
 ```
 
+## 镜像发布策略
+
+TX-Node 的 CI 分离了验证、测试镜像和正式发布，普通合并不会直接覆盖生产使用的 `latest`：
+
+- **合并/推送 `main`**：运行 Go 测试与稳定性测试；**不推送 Docker 镜像**。
+- **手动构建测试镜像**：到 [CI Actions](https://github.com/ANRCM0/TX-Node/actions/workflows/ci.yml) 选择 `main`，点击 **Run workflow**。成功后推送 `ghcr.io/anrcm0/tx-node:test` 和精确提交 SHA 标签，**不会修改 `latest`**。
+- **正式发布**：将经过验证的源码打上符合语义化版本的 `vX.Y.Z` 标签。tag CI 完成测试、双架构构建和镜像发布，推送 `ghcr.io/anrcm0/tx-node:vX.Y.Z` 与 `:latest`，并生成 GitHub Release。预发布标签（例如 `v2.3.0-rc.1`）不更新 `latest`。
+- **可选的版本发布向导**：[Publish semantic release](https://github.com/ANRCM0/TX-Node/actions/workflows/publish-release.yml) 只接受人工从 `main` 触发。使用前必须更新 `.github/release/VERSION` 与 `.github/release/NOTES.md` 到相同的新版本并清除过时资产说明。仅编辑这些文件不会自动发布。
+- 已安装的节点不会因为 GHCR 标签更新而自行升级；实际升级仍由 TX-Node-Installer 管理。
+
 ## 审计说明
 
 | 项 | 行为 |
