@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           go mod download -json github.com/ANRCM0/sing-box@v0.0.0-20260917154452-6184aa2cd055
-          go mod download -json github.com/ANRCM0/Xray-core@v0.0.0-20261008033212-5793eb993313
+          go mod download -json github.com/ANRCM0/Xray-core@v0.0.0-20261008033525-867967fac148
           echo "=== CANONICAL CHECKSUMS ==="
           grep -E 'github.com/ANRCM0/(sing-box|Xray-core)' go.sum || true
           echo "=== KERNEL COMPILE CHECK ==="
