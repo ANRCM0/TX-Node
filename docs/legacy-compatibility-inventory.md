@@ -32,7 +32,7 @@ Current canonical deployment locations include:
 
 - config root: `/etc/txnode`;
 - management command: `txnode`;
-- runtime image: `ghcr.io/ANRCM0/tx-node:latest`.
+- runtime image: `ghcr.io/anrcm0/tx-node:latest`.
 
 Machine Runtime Update v1 also delegates back to this Installer runtime.
 
