@@ -51,3 +51,15 @@ jobs:
           sed -n '140,238p' "$old/app/dispatcher/default.go"
           echo "=== Historical bandwidth import sites ==="
           grep -Rn -E 'features/bandwidth|SetUserLimit|SetUserLimiter|GetUserLimiter' "$old/app" "$old/proxy" "$old/core" 2>/dev/null | head -100 || true
+      - name: Resolve ANRCM0 fork module sums and check compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          go mod download -json github.com/ANRCM0/sing-box@v0.0.0-20260917154452-6184aa2cd055
+          go mod download -json github.com/ANRCM0/Xray-core@v0.0.0-20261008033212-5793eb993313
+          echo "=== CANONICAL CHECKSUMS ==="
+          grep -E 'github.com/ANRCM0/(sing-box|Xray-core)' go.sum || true
+          echo "=== KERNEL COMPILE CHECK ==="
+          go test ./internal/kernel/singbox ./internal/kernel/xray
+          echo "=== MODULE DIFF ==="
+          go mod tidy -diff
