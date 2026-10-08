@@ -11,9 +11,9 @@ RUN go mod download
 COPY . .
 
 RUN CGO_ENABLED=0 go build -ldflags "-s -w \
-    -X github.com/PaiMonCai/TX-Node/internal/buildinfo.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) \
-    -X github.com/PaiMonCai/TX-Node/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-    -X github.com/PaiMonCai/TX-Node/internal/buildinfo.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
+    -X github.com/ANRCM0/TX-Node/internal/buildinfo.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) \
+    -X github.com/ANRCM0/TX-Node/internal/buildinfo.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+    -X github.com/ANRCM0/TX-Node/internal/buildinfo.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
     -tags "with_quic with_utls with_wireguard with_clash_api" \
     -o tx-node ./cmd/tx-node
 
@@ -36,7 +36,7 @@ WORKDIR /etc/txnode
 #     -e apiHost=https://panel.example.com \
 #     -e apiKey=YOUR_TOKEN \
 #     -e nodeID=1 \
-#     ghcr.io/paimoncai/tx-node:latest
+#     ghcr.io/ANRCM0/tx-node:latest
 #
 # Supported env vars:
 #   apiHost  / API_HOST    → panel URL
