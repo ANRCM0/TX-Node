@@ -50,6 +50,20 @@ jobs:
           fi
           go mod verify
 
+      - name: Enforce ANRCM0-owned kernel dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Eq '^replace github.com/sagernet/sing-box => github.com/ANRCM0/sing-box v' go.mod
+          grep -Eq '^replace github.com/xtls/xray-core => github.com/ANRCM0/Xray-core v' go.mod
+          if grep -E 'github.com/PaiMonCai/(sing-box|Xray-core)' go.mod go.sum; then
+            echo "Old-account kernel fork dependency has reappeared" >&2
+            exit 1
+          fi
+          grep -Eq '^github.com/ANRCM0/sing-box v[^ ]+ h1:' go.sum
+          grep -Eq '^github.com/ANRCM0/Xray-core v[^ ]+ h1:' go.sum
+          go mod tidy -diff
+
       - name: Run tests
         run: make test
 
