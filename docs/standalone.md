@@ -59,7 +59,7 @@ The following are compatibility surfaces, not branding leftovers:
 Canonical TX-Node-facing identities are:
 
 - node binary: `tx-node`;
-- Docker image: `ghcr.io/ANRCM0/tx-node`;
+- Docker image: `ghcr.io/anrcm0/tx-node`;
 - runtime source/release repository: `ANRCM0/TX-Node`;
 - installation and host-management entry point: public `ANRCM0/TX-Node-Installer`.
 
