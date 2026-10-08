@@ -79,12 +79,11 @@ This source-identity change does not alter Xboard panel protocol compatibility.
 
 ## Kernel fork dependencies
 
-TX-Node no longer depends on `cedar2025`-owned kernel forks. The current replacements are TX-Node-maintained forks:
+The runtime currently uses the `sagernet/sing-box` and `xtls/xray-core` module APIs with **pinned replacements** in `go.mod`. Those replacements still identify historical `PaiMonCai/sing-box` and `PaiMonCai/Xray-core` versions, which are recorded with their original hashes in `go.sum`. These pinned binaries are distinct from TX-Node's own Go module identity. Keeping them temporarily avoids silently dropping the embedded Mieru / Xray bandwidth integrations.
 
-- `github.com/ANRCM0/sing-box`, with the current Mieru patch baseline retained on `tx-mieru`;
-- `github.com/ANRCM0/Xray-core`, with the current per-user bandwidth patch baseline retained on `tx-bandwidth`.
+The currently visible source repositories are `ANRCM0/sing-box` and `ANRCM0/Xray-core`, but the historical pinned commit IDs have not been verified in those repositories. **Do not rewrite the replacement paths or upgrade the revisions as a cosmetic rename**: first restore/mirror the exact patch baseline, confirm module checksum compatibility, and test both kernel modes.
 
-The pinned commits are intentionally unchanged from the previously validated cedar fork revisions. Kernel upgrades are developed separately on `upgrade/sing-box-2026q3` and `upgrade/xray-core-2026q3`, with upstream changes reviewed and the small TX patch set reapplied/tested explicitly.
+This is a tracked kernel-dependency migration, not a claim that the historic fork paths are clean. Any migration must update `go.mod` and `go.sum` together, pass cold-cache `go mod download`, `go mod verify`, `make test`, the race/stability suites, both architecture builds, and an actual node startup smoke test.
 
 ## License provenance
 
