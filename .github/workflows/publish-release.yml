@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="$(tr -d '[:space:]' < .github/release/VERSION)"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
             echo "Invalid release version: $TAG" >&2
             exit 1
           fi
