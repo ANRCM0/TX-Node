@@ -1,14 +1,12 @@
 // Package audit implements the tx-node embedded access-audit reporter.
 //
-// tx-node = xboard-node + optional audit module. The module hooks sing-box
-// kernel connections, matches targets against rules pulled from the panel
-// (AccessAudit plugin), and reports hits back over the SAME node
-// authentication channel as the stock reports (server token + node_id /
-// machine token) — no separate credentials.
+// The optional reporter observes sing-box kernel connections, matches targets
+// against panel-provided AccessAudit rules, and reports matched events using
+// the existing node authentication (server token + node_id or machine token).
+// It does not introduce a separate credential or control-plane dependency.
 //
-// Disabled by default: without an [audit] section in config.yml every public
-// method is a no-op with zero overhead, and the binary behaves identically
-// to stock xboard-node.
+// Disabled by default: without an [audit] section in config.yml, the reporter
+// does not participate in request handling or traffic reporting.
 package audit
 
 import (
