@@ -1,0 +1,37 @@
+name: Inspect kernel migration baseline
+on:
+  push:
+    branches: [fix/use-anrcm0-kernel-forks]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve canonical fork revisions and inspect historical bandwidth integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== Canonical sing-box version ==="
+          go list -m -json github.com/ANRCM0/sing-box@6184aa2cd055adbb62e9aa244812f209bb716b94
+          echo "=== Canonical Xray version ==="
+          go list -m -json github.com/ANRCM0/Xray-core@626599d54534ab1b2eaf443977c21900a529e779
+          echo "=== Historical Xray module ==="
+          go mod download -json github.com/PaiMonCai/Xray-core@v0.0.0-20260409213332-f47935539965
+          old=$(go mod download -json github.com/PaiMonCai/Xray-core@v0.0.0-20260409213332-f47935539965 | jq -r .Dir)
+          echo "=== Historical bandwidth feature source ==="
+          if [ -d "$old/features/bandwidth" ]; then
+            find "$old/features/bandwidth" -maxdepth 2 -type f | sort | while read -r f; do
+              echo "=== $f ==="
+              sed -n '1,320p' "$f"
+            done
+          else
+            echo "Historical bandwidth feature absent"
+          fi
+          echo "=== Historical bandwidth import sites ==="
+          grep -Rn -E 'features/bandwidth|SetUserLimit|SetUserLimiter|GetUserLimiter' "$old/app" "$old/proxy" "$old/core" 2>/dev/null | head -100 || true
