@@ -1,4 +1,4 @@
-module github.com/PaiMonCai/TX-Node
+module github.com/ANRCM0/TX-Node
 
 go 1.26
 
@@ -261,6 +261,9 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
+// Compatibility lock: this historical fork revision contains TX-Node's
+// kernel integrations. Do not rename to ANRCM0 without verifying matching
+// source commits and regenerating go.sum. See docs/standalone.md.
 replace github.com/sagernet/sing-box => github.com/PaiMonCai/sing-box v1.14.0-alpha.2.0.20260917151157-106bcaf15fd3
 
 replace github.com/xtls/xray-core => github.com/PaiMonCai/Xray-core v0.0.0-20260409213332-f47935539965

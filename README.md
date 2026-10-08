@@ -10,7 +10,7 @@ TX-Node 支持 `sing-box` / `xray-core` 双内核。安装、升级、回滚与�
 
 ## 安装与部署
 
-TX-Node 私有仓库只维护**运行时源码、构建、测试与发布**。安装、升级、多面板实例、隔离实例和主机运维脚本统一由公开仓库维护：
+TX-Node 当前为**公开的运行时源码仓库**，负责源码、构建、测试与发布。安装、升级、多面板实例、隔离实例和主机运维脚本则统一由独立的公开安装器仓库维护：
 
 **TX-Node Installer**  
 https://github.com/ANRCM0/TX-Node-Installer
@@ -24,14 +24,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ANRCM0/TX-Node-Installer/mai
 TXBoard 生成的非交互安装命令同样使用公开 Installer。运行时镜像仍由本仓库 CI 构建并发布到：
 
 ```text
-ghcr.io/ANRCM0/tx-node:latest
+ghcr.io/anrcm0/tx-node:latest
 ```
 
-公开 Installer 与私有运行时仓库的职责边界：
+TX-Node 运行时仓库与 TX-Node-Installer（**两者均公开**）的职责边界：
 
 - **TX-Node**：Go 运行时、ControlPlane、Machine、内核适配、审计客户端、配置模型、测试、Docker 镜像与二进制发布。
 - **TX-Node-Installer**：安装/升级/卸载、Docker Compose、`txnode` 运维命令、多面板 `instances:`、隔离实例、配置备份与回滚。
-- 私有仓库不再维护 `deploy.sh` / `install.sh` 的副本，避免安装逻辑双轨演进。
+- 运行时仓库不再维护 `deploy.sh` / `install.sh` 的副本，避免安装逻辑双轨演进。
 
 开发者需要直接运行二进制时，可使用：
 

@@ -35,6 +35,21 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Verify canonical Go module and source paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fxq 'module github.com/ANRCM0/TX-Node' go.mod
+          if grep -RFn 'github.com/PaiMonCai/TX-Node' cmd internal Makefile Dockerfile go.mod; then
+            echo "Legacy TX-Node module path has reappeared in runtime sources or build metadata" >&2
+            exit 1
+          fi
+          if grep -Fq 'ghcr.io/paimoncai/tx-node' Dockerfile; then
+            echo "Legacy TX-Node registry location has reappeared in the Dockerfile" >&2
+            exit 1
+          fi
+          go mod verify
+
       - name: Run tests
         run: make test
 
