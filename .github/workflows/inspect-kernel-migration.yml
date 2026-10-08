@@ -40,5 +40,14 @@ jobs:
           grep -n -C 24 'bandwidth' "$old/core/xray.go"
           echo "=== Historical rate-limit tests ==="
           sed -n '1,260p' "$old/app/dispatcher/ratelimit_test.go"
+          echo "=== All historical dispatcher bandwidth methods ==="
+          grep -Rn -E 'func WrapLink|type RateLimitWriter|func \\(.*RateLimitWriter\\)|func applyBandwidthLimit' "$old/app/dispatcher" || true
+          echo "=== Old dispatcher file list ==="
+          find "$old/app/dispatcher" -maxdepth 1 -type f -printf '%f\\n' | sort
+          echo "=== Old stats and throttle implementation ==="
+          sed -n '1,300p' "$old/app/dispatcher/stats.go"
+          if [ -f "$old/app/dispatcher/ratelimit.go" ]; then sed -n '1,280p' "$old/app/dispatcher/ratelimit.go"; fi
+          echo "=== Historical getLink and WrapLink ==="
+          sed -n '140,238p' "$old/app/dispatcher/default.go"
           echo "=== Historical bandwidth import sites ==="
           grep -Rn -E 'features/bandwidth|SetUserLimit|SetUserLimiter|GetUserLimiter' "$old/app" "$old/proxy" "$old/core" 2>/dev/null | head -100 || true
