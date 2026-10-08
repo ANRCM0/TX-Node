@@ -1,13 +1,8 @@
 name: Publish semantic release
 
+# Formal releases require an explicit operator action. Editing VERSION/NOTES alone
+# must never push a tag or overwrite :latest.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/publish-release.yml'
-      - '.github/release/VERSION'
-      - '.github/release/NOTES.md'
   workflow_dispatch:
 
 permissions:
@@ -19,6 +14,15 @@ jobs:
     name: Publish versioned release
     runs-on: ubuntu-latest
     steps:
+      - name: Confirm release runs from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != 'refs/heads/main' ]; then
+            echo 'Publish semantic release must be dispatched from main.' >&2
+            exit 1
+          fi
+
       - name: Checkout main
         uses: actions/checkout@v4
         with:
@@ -35,6 +39,14 @@ jobs:
             exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if ! grep -Fxq "# TX-Node $TAG" .github/release/NOTES.md; then
+            echo "Release notes title must match $TAG. Update NOTES.md explicitly before publishing." >&2
+            exit 1
+          fi
+          if grep -Eq 'xboard-node-linux-|xbctl-linux-|AccessAudit-plugin[.]zip' .github/release/NOTES.md; then
+            echo 'Release notes still mention retired TX-Node v2 artifacts.' >&2
+            exit 1
+          fi
 
       - name: Check release state
         id: state
@@ -51,10 +63,18 @@ jobs:
           fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "release_exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+            echo "Release $TAG is already published. Increment VERSION instead." >&2
+            exit 1
           fi
+
+          if [[ "$(git rev-list -n 1 "$TAG" 2>/dev/null || true)" != "" ]]; then
+            TAG_SHA="$(git rev-list -n 1 "$TAG")"
+            if [[ "$TAG_SHA" != "$GITHUB_SHA" ]]; then
+              echo "Existing tag $TAG points to $TAG_SHA, not current main $GITHUB_SHA" >&2
+              exit 1
+            fi
+          fi
+          echo "release_exists=false" >> "$GITHUB_OUTPUT"
 
       - name: Create annotated version tag
         if: steps.state.outputs.tag_exists != 'true'
@@ -79,7 +99,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh workflow run ci.yml --ref "$TAG" -f push_latest=true
+          gh workflow run ci.yml --ref "$TAG"
 
       - name: Wait for release CI
         if: steps.state.outputs.release_exists != 'true'
