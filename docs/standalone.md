@@ -79,11 +79,14 @@ This source-identity change does not alter Xboard panel protocol compatibility.
 
 ## Kernel fork dependencies
 
-The runtime currently uses the `sagernet/sing-box` and `xtls/xray-core` module APIs with **pinned replacements** in `go.mod`. Those replacements still identify historical `PaiMonCai/sing-box` and `PaiMonCai/Xray-core` versions, which are recorded with their original hashes in `go.sum`. These pinned binaries are distinct from TX-Node's own Go module identity. Keeping them temporarily avoids silently dropping the embedded Mieru / Xray bandwidth integrations.
+TX-Node uses the upstream Go **module APIs** `github.com/sagernet/sing-box` and `github.com/xtls/xray-core` for compatibility with their own import graphs. However, `go.mod` pins the concrete kernel source through `replace` to repositories **within the same GitHub account**:
 
-The currently visible source repositories are `ANRCM0/sing-box` and `ANRCM0/Xray-core`, but the historical pinned commit IDs have not been verified in those repositories. **Do not rewrite the replacement paths or upgrade the revisions as a cosmetic rename**: first restore/mirror the exact patch baseline, confirm module checksum compatibility, and test both kernel modes.
+- [`ANRCM0/sing-box`](https://github.com/ANRCM0/sing-box): contains the Mieru adapter and outbound-target-IP reporting used by TX-Node.
+- [`ANRCM0/Xray-core`](https://github.com/ANRCM0/Xray-core): the TX-Node bandwidth-manager, per-user rate-limit writer, and tests are restored here.
 
-This is a tracked kernel-dependency migration, not a claim that the historic fork paths are clean. Any migration must update `go.mod` and `go.sum` together, pass cold-cache `go mod download`, `go mod verify`, `make test`, the race/stability suites, both architecture builds, and an actual node startup smoke test.
+Both fork revisions are pinned in `go.mod`, with checksum entries in `go.sum`; builds must not silently use upstream kernel releases instead of these patches. Run `go mod verify`, the node suites, cold-cache Docker builds, and test both kernel modes after changing a pin.
+
+Original upstream names in `require` and source `import` are Go module identifiers, **not remote download targets**: the `replace` entries specify the actual ANRCM0 fork repositories. Historical `PaiMonCai` kernel fork fetch paths are no longer needed.
 
 ## License provenance
 
