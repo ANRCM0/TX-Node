@@ -149,9 +149,9 @@ type KernelConfig struct {
 	CustomConfig string `yaml:"custom_config"`
 }
 
-// AuditConfig is the tx-node extension: embedded access-audit reporter for
-// the sing-box kernel. Disabled by default; omitting the section entirely
-// keeps the binary byte-for-byte behavior of stock xboard-node.
+// AuditConfig controls the optional embedded access-audit reporter for the
+// sing-box kernel. Omitting this section disables the reporter and preserves
+// the existing node/protocol behavior.
 type AuditConfig struct {
 	// Enabled gates the whole module.
 	Enabled bool `yaml:"enabled"`
