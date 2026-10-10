@@ -8,6 +8,12 @@ TX-Node 支持 `sing-box` / `xray-core` 双内核。安装、升级、回滚与�
 
 项目起源于 [cedar2025/Xboard-Node](https://github.com/cedar2025/Xboard-Node)。TX-Node 保留 Xboard 面板 API、认证字段和现有节点配置的协议兼容，但不再以周期性同步上游作为开发模式；上游后续修复会按需审查并选择性移植。独立维护策略见 [`docs/standalone.md`](docs/standalone.md)。
 
+## Control Plane Provider 支持状态
+
+普通节点与 Machine Mode 均通过 `panel.provider` 选择远程控制平面；省略该字段或设置为 `xboard` 时使用现有 Xboard 兼容协议。`txboard` 当前仍是预留值，配置校验会拒绝，**尚未实现 TXBoard 原生适配**。Standalone 模式使用本地控制平面。
+
+Provider 的构造错误处理、配置继承及 S8 原生协议审查清单见 [`docs/control-plane-providers.md`](docs/control-plane-providers.md)。
+
 ## 安装与部署
 
 TX-Node 当前为**公开的运行时源码仓库**，负责源码、构建、测试与发布。安装、升级、多面板实例、隔离实例和主机运维脚本则统一由独立的公开安装器仓库维护：
