@@ -1,30 +1,27 @@
-# TX-Node v2.2.3
+# TX-Node v2.3.0
 
-本版本继续完善 AccessAudit 管理页，重点解决访问日志量大时页面过长，以及无法手动清理日志的问题，同时保留主页进入数据分析与设置页的稳定入口。
+TX-Node v2.3.0 是下一次拟发布的运行时版本，聚焦原生 TXBoard 节点协议、多控制平面适配和运行时可靠性。本文件仅准备发布说明；合并代码不会自动创建 Tag、发布 Release 或覆盖 GHCR `latest`。
 
-## AccessAudit v2.2.3
+## 新功能与改进
 
-- 访问日志列表改为固定每页 20 条，日志量再大也不会让单页无限变长。
-- 保留现有分页器，并按总记录数自动计算页数；筛选条件与分页继续兼容。
-- 访问日志卡片新增“每页固定 20 条”提示。
-- 新增“清空访问日志”管理员操作，执行前要求确认，并返回实际清理条数。
-- 手动清理仅删除 `audit_access_logs` 访问明细，不删除审计规则、命中记录、封禁记录和长期分析聚合数据。
-- 主页右上角继续提供“数据分析与设置”入口，并增强入口挂载逻辑，避免页面结构变化时入口消失。
-- AccessAudit 插件版本升级至 `2.2.3`，作者为 `ANRCM0`。
+- **TXBoard 原生控制平面**：新增 `panel.provider: txboard`，支持 `/txapi/node/v1` Bearer + Node/Machine 身份请求头、握手、配置及用户拉取、流量上报、Machine 节点发现和状态上报。
+- **原生 WebSocket**：适配 TXBoard 版本化事件帧、重连、心跳、用户/配置事件及 Machine 节点消息。服务端 WebSocket 可选，HTTP 轮询仍可独立运行。
+- **多面板兼容**：保留 `panel.provider: xboard`（缺省）和 Local/Standalone 路径。Xboard 协议继续由独立适配器提供，不影响 TXBoard 原生通信。
+- **稳定性与计费保护**：运行时采用持久化待上报流量批次及稳定批次 ID；TXBoard 的 `HTTP 202` 代表队列已接收，并不代表 MySQL 已完成结算。请结合服务端队列与账本核对。
+- **部署职责边界**：安装、升级、回滚以及历史 native/systemd 迁移由独立 `ANRCM0/TX-Node-Installer` 负责；本仓库不再发布历史宿主管理工具。
 
-## 兼容性
+## 兼容性与注意事项
 
-- TX-Node → 面板的访问审计上报协议保持不变。
-- 无新增数据库 migration。
-- 升级不会主动删除现有访问日志；只有管理员点击“清空访问日志”并确认后才会执行删除。
-- 数据分析聚合数据与原始访问日志分离，手动清空原始日志不会同步清空历史聚合。
+- 已移除旧 `xbctl` / `xboard-node` 的**新版发布产物**；历史安装仍可由 Installer 识别和迁移。现有 Xboard 协议适配器与旧 Compose 配置路径回退暂时保留。
+- `audit.enabled` 的嵌入式 AccessAudit reporter 目前仅通过 Xboard 兼容适配器暴露旧审计接口；**TXBoard 原生 Provider 尚不支持原生审计上报**。请在原生 TXBoard 部署中保持 `audit.enabled: false`。
+- 对现有 Docker 部署升级前，请使用新版 Installer 检查 `/etc/txnode` 的持久化挂载，备份或迁移原容器中的未确认流量文件；不要用空挂载直接覆盖旧运行时目录。
+- **发布前验收**：Go/CI 通过不替代真实 TXBoard + TX-Node + Installer 联调。生产发布前仍需验证节点和 Machine HTTP、可选 WebSocket、流量队列结算与重启重放，以及 sing-box/Xray 代表性协议。
 
 ## Release assets
 
-CI 发布以下文件：
+发布工作流为 Linux 双架构生成以下运行时二进制：
 
-- `xboard-node-linux-amd64`
-- `xboard-node-linux-arm64`
-- `xbctl-linux-amd64`
-- `xbctl-linux-arm64`
-- `AccessAudit-plugin.zip`
+- `tx-node-linux-amd64`
+- `tx-node-linux-arm64`
+
+Docker 多架构镜像发布到 `ghcr.io/anrcm0/tx-node`。稳定版 Tag `v2.3.0` 成功构建后，才会推送 `:v2.3.0` 和 `:latest`；手动测试版 `:test` 不会覆盖生产标签。正式版本发布需要单独的人工触发。
