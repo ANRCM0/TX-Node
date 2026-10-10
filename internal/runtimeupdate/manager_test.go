@@ -56,6 +56,7 @@ func TestValidateRequestRejectsUnboundedInputs(t *testing.T) {
 		{strings.Repeat("a", 65), "latest"},
 		{"mup_ok", "v2.3.0"},
 		{"mup_ok", "ghcr.io/example/other:latest"},
+		{"mup_ok", "v2.3.0-rc.1"},
 	}
 	for _, tc := range cases {
 		if err := ValidateRequest(tc.id, tc.target); err == nil {
@@ -115,4 +116,15 @@ func TestCapabilityRejectsUnknownOrOversizedData(t *testing.T) {
 	if m.Available() {
 		t.Fatal("oversized capability file must be rejected")
 	}
+}
+
+func TestDevelopmentChannelRequest(t *testing.T) {
+ dir := t.TempDir()
+ if err := os.WriteFile(filepath.Join(dir, "capabilities.env"), []byte("schema=1\nupdater_available=true\ntarget=latest,dev\n"), 0600); err != nil { t.Fatal(err) }
+ m := New(dir)
+ if !m.Available() { t.Fatal("two-channel bridge should be available") }
+ if err := m.Request("mup_dev-01", "dev"); err != nil { t.Fatal(err) }
+ data,err:=os.ReadFile(filepath.Join(dir,"request.env")); if err!=nil {t.Fatal(err)}
+ if !strings.Contains(string(data),"target=dev\n") {t.Fatalf("wrong target: %s",data)}
+ if err:=ValidateRequest("mup_dev-02","random-image");err==nil {t.Fatal("unbounded target accepted")}
 }
