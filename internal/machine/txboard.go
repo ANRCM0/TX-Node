@@ -61,7 +61,7 @@ func (x *txboardMachineControlPlane)ReportMachineStatus(cpu float64,mem,swap,dis
  }
  if netIn>=0&&netOut>=0{body["net"]=map[string]any{"in_speed":netIn,"out_speed":netOut}}
  if status!=nil{
-  runtime:=map[string]any{"version":status.Version,"build_time":status.BuildTime,"deployment":status.Deployment,"updater_available":status.UpdaterAvailable}
+  runtime:=map[string]any{"version":status.Version,"build_time":status.BuildTime,"deployment":status.Deployment,"updater_available":status.UpdaterAvailable,"update_targets":status.UpdateTargets}
   if status.Update!=nil{
    u:=status.Update
    runtime["update"]=map[string]any{"request_id":u.RequestID,"target":u.Target,"status":u.Status,"updated_at":u.UpdatedAt,"message":u.Message}
