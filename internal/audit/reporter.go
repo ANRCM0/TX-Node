@@ -90,7 +90,8 @@ type rule struct {
 	values []string // preprocessed (lowercased, split by newline/comma)
 }
 
-// Event is one audit hit. JSON shape matches the panel report API.
+// Event is one audit hit. Legacy Xboard JSON omits the internal ID;
+// TXBoard native wire emits it as event_id for server-side deduplication.
 type Event struct {
 	ID       string `json:"-"` // stable across retries; emitted only as native event_id
 	UserID   int    `json:"user_id"`
