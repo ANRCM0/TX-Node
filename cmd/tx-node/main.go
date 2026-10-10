@@ -198,7 +198,8 @@ func runWithReload(initialRoot *config.RootConfig, configPath string) {
 				defer wg.Done()
 				if instanceCfg.IsMachineMode() {
 					nlog.Core().Info("starting machine instance", "instance", instanceCfg.InstanceID, "machine_id", instanceCfg.Machine.MachineID, "panel_url", instanceCfg.Panel.URL)
-					orch := machine.New(instanceCfg)
+					orch, createErr := machine.NewChecked(instanceCfg)
+                    if createErr != nil { cancelOnServiceError(errCh, cancel, createErr); return }
 					if err := orch.Run(ctx); err != nil {
 						nlog.Core().Error("machine instance exited with error", "instance", instanceCfg.InstanceID, "error", err)
 						cancelOnServiceError(errCh, cancel, err)
@@ -224,7 +225,8 @@ func runWithReload(initialRoot *config.RootConfig, configPath string) {
 								return
 							}
 						}
-						svc := service.New(nodeCfg)
+						svc, createErr := service.NewChecked(nodeCfg)
+                        if createErr != nil { cancelOnServiceError(errCh, cancel, createErr); return }
 						if err := svc.Run(ctx); err != nil {
 							nlog.Core().Error("node service exited with error", "instance", nodeCfg.InstanceID, "node_id", nodeCfg.Panel.NodeID, "error", err)
 							cancelOnServiceError(errCh, cancel, err)
