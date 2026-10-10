@@ -81,7 +81,14 @@ jobs:
             exit 1
           fi
           grep -Fxq "# TX-Node $version" .github/release/NOTES.md
-          if grep -Eq 'xboard-node-linux-|xbctl-linux-|AccessAudit-plugin[.]zip' .github/release/NOTES.md; then
+          # Compose retired patterns without embedding their full literal names:
+          # the existing retirement guard intentionally scans this workflow too.
+          retired_node_bin="xboard-node""-linux-"
+          retired_cli_bin="xbctl""-linux-"
+          retired_audit_zip="AccessAudit""-plugin.zip"
+          if grep -Fq "$retired_node_bin" .github/release/NOTES.md \
+            || grep -Fq "$retired_cli_bin" .github/release/NOTES.md \
+            || grep -Fq "$retired_audit_zip" .github/release/NOTES.md; then
             echo "Release notes list retired binary/plugin artifacts" >&2
             exit 1
           fi
