@@ -6,7 +6,7 @@ TX-Node is maintained as an independent project. It originated from Xboard-Node 
 
 - `ANRCM0/TX-Node` is the source of truth for development and releases.
 - `main` is the product mainline.
-- Releases are created from semantic `v*` tags only.
+- Development images are built automatically from each `main` push (`:dev` and commit SHA); stable releases are created from strict `vX.Y.Z` tags only. No RC/preview release channel.
 - Upstream repositories are references for fixes and ideas, not merge targets.
 
 ## Upstream changes
