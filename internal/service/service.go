@@ -69,8 +69,15 @@ type Service struct {
 	ops *nodeops.Executor
 }
 
+func NewChecked(cfg *config.Config) (*Service, error) {
+ cp, err := controlplane.NewForConfigChecked(cfg)
+ if err != nil { return nil, err }
+ return newService(cfg, cp), nil
+}
+
 func New(cfg *config.Config) *Service {
-	return newService(cfg, controlplane.NewForConfig(cfg))
+ svc, _ := NewChecked(cfg)
+ return svc
 }
 
 // NewWithControlPlane creates a Service with an externally-provided

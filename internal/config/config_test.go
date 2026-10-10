@@ -543,3 +543,14 @@ func TestInheritFrom_AutoTLSInheritedWhenChildHasNoCertConfig(t *testing.T) {
 		t.Error("auto_tls should be inherited when child has no cert config")
 	}
 }
+
+func TestPanelProviderInheritance(t *testing.T) {
+ for _,tc:=range []struct{name,child,want string}{{"inherit","","xboard"},{"override","xboard","xboard"},{"preserve unknown","custom","custom"}} {
+  t.Run(tc.name,func(t *testing.T){
+   parent:=&Config{Panel:PanelConfig{Provider:"xboard"}}
+   child:=&Config{Panel:PanelConfig{Provider:tc.child}}
+   child.inheritFrom(parent)
+   if child.Panel.Provider!=tc.want {t.Fatalf("provider = %q, want %q",child.Panel.Provider,tc.want)}
+  })
+ }
+}
