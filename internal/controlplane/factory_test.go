@@ -33,8 +33,14 @@ func TestNewForConfig(t *testing.T) {
 	}
 }
 
+func TestTXBoardFactory(t *testing.T) {
+ cp,err:=NewForConfigChecked(&config.Config{Panel:config.PanelConfig{Provider:"txboard"}})
+ if err!=nil {t.Fatal(err)}
+ if _,ok:=cp.(*TXBoardControlPlane);!ok{t.Fatalf("got %T",cp)}
+}
+
 func TestNewForConfigCheckedUnsupported(t *testing.T) {
- for _, p := range []string{"txboard", "unknown"} {
+ for _, p := range []string{"unknown"} {
   cfg := &config.Config{Panel: config.PanelConfig{Provider:p}}
   cp, err := NewForConfigChecked(cfg)
   if err == nil || cp != nil { t.Fatalf("provider %q: cp=%T err=%v",p,cp,err) }
