@@ -446,6 +446,7 @@ func (o *Orchestrator) reportMachineStatus() {
 	}
 	if o.runtimeUpdater != nil {
 		runtimeStatus.UpdaterAvailable = o.runtimeUpdater.Available()
+		runtimeStatus.UpdateTargets = o.runtimeUpdater.SupportedTargets()
 		if runtimeStatus.UpdaterAvailable {
 			runtimeStatus.Deployment = "docker"
 		}

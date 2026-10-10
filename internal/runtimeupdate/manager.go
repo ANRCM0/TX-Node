@@ -48,20 +48,48 @@ func (m *Manager) requestPath() string    { return filepath.Join(m.dir, "request
 func (m *Manager) statusPath() string     { return filepath.Join(m.dir, "status.env") }
 
 func (m *Manager) Available() bool {
+	return m.supportsTarget("latest")
+}
+
+// SupportedTargets returns only the fixed update targets advertised by a
+// validated Installer bridge, never arbitrary image names from configuration.
+func (m *Manager) SupportedTargets() []string {
 	values, err := parseEnvFile(m.capabilityPath(), 8, 512)
-	if err != nil {
+	if err != nil || values["schema"] != "1" || values["updater_available"] != "true" {
+		return nil
+	}
+	switch values["target"] {
+	case "latest":
+		return []string{"latest"}
+	case "latest,dev":
+		return []string{"latest", "dev"}
+	default:
+		return nil
+	}
+}
+
+// Older Installer capability files advertise only latest; accepting dev requires
+// an explicit new bridge advertisement, not just a legacy updater marker.
+func (m *Manager) supportsTarget(target string) bool {
+	values, err := parseEnvFile(m.capabilityPath(), 8, 512)
+	if err != nil || values["schema"] != "1" || values["updater_available"] != "true" {
 		return false
 	}
-	return values["schema"] == "1" &&
-		values["updater_available"] == "true" &&
-		values["target"] == "latest"
+	advertised := values["target"]
+	if advertised == "latest" {
+		return target == "latest"
+	}
+	if advertised == "latest,dev" {
+		return target == "latest" || target == "dev"
+	}
+	return false
 }
 
 func ValidateRequest(requestID, target string) error {
 	if !requestIDPattern.MatchString(requestID) {
 		return errors.New("invalid request_id")
 	}
-	if target != "latest" {
+	if target != "latest" && target != "dev" {
 		return errors.New("unsupported update target")
 	}
 	return nil
@@ -71,15 +99,15 @@ func (m *Manager) Request(requestID, target string) error {
 	if err := ValidateRequest(requestID, target); err != nil {
 		return err
 	}
-	if !m.Available() {
-		return errors.New("runtime updater unavailable")
+	if !m.supportsTarget(target) {
+		return errors.New("runtime updater unavailable for target")
 	}
 
 	if err := os.MkdirAll(m.dir, 0o700); err != nil {
 		return fmt.Errorf("create update directory: %w", err)
 	}
 
-	body := fmt.Sprintf("schema=1\nrequest_id=%s\ntarget=latest\n", requestID)
+	body := fmt.Sprintf("schema=1\nrequest_id=%s\ntarget=%s\n", requestID, target)
 	tmp, err := os.CreateTemp(m.dir, ".request-*")
 	if err != nil {
 		return fmt.Errorf("create update request: %w", err)
@@ -116,7 +144,7 @@ func (m *Manager) LastStatus() *Status {
 	requestID := values["request_id"]
 	target := values["target"]
 	state := values["status"]
-	if !requestIDPattern.MatchString(requestID) || target != "latest" || !allowedStatuses[state] {
+	if !requestIDPattern.MatchString(requestID) || (target != "latest" && target != "dev") || !allowedStatuses[state] {
 		return nil
 	}
 
