@@ -69,7 +69,7 @@ Service / Kernel
 
 This prevents a new typed operation from automatically gaining access to unrelated Service state. The protocol contract is unchanged.
 
-See [Runtime Boundary](./runtime-boundary.md) for the feature gate and simplification roadmap.
+See [Runtime Boundary](./runtime-boundary.md) for current runtime ownership and the feature-admission rules; consult [compatibility inventory](./legacy-compatibility-inventory.md) before removing migration paths.
 
 ## Optional capabilities
 
