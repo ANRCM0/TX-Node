@@ -6,6 +6,10 @@ import (
 	"github.com/ANRCM0/TX-Node/internal/model"
 )
 
+// A stalled node may buffer a limited number of typed operations. Configuration
+// and user state are independently coalesced and never evicted by this limit.
+const maxPendingOpsRequests = 128
+
 // MailboxState is the coalesced snapshot drained from a NodeMailbox.
 type MailboxState struct {
 	Config         *model.NodeSpec
@@ -62,9 +66,12 @@ func (m *NodeMailbox) SeedBaseline(users []model.UserSpec, config *model.NodeSpe
 	}
 }
 
-func (m *NodeMailbox) Apply(event Event) {
+// Apply returns false only when a typed operation could not be queued. Callers
+// must return an explicit busy result to the control plane so it can retry.
+func (m *NodeMailbox) Apply(event Event) bool {
 	m.mu.Lock()
 	changed := false
+	accepted := true
 
 	switch event.Type {
 	case EventSyncConfig:
@@ -88,6 +95,10 @@ func (m *NodeMailbox) Apply(event Event) {
 		}
 	case EventOpsRequest:
 		if event.OpsRequest != nil {
+			if len(m.opsRequests) >= maxPendingOpsRequests {
+				accepted = false
+				break
+			}
 			request := *event.OpsRequest
 			if request.Args != nil {
 				request.Args = cloneAnyMap(request.Args)
@@ -114,6 +125,7 @@ func (m *NodeMailbox) Apply(event Event) {
 	if changed {
 		m.notify()
 	}
+	return accepted
 }
 
 func (m *NodeMailbox) notify() {

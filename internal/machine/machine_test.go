@@ -3,6 +3,10 @@ package machine
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"os"
 	"path/filepath"
 	"testing"
@@ -256,5 +260,42 @@ func TestMachineRuntimeUpdateRejectsUnsupportedTarget(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(dir, "request.env")); !os.IsNotExist(err) {
 		t.Fatalf("unsafe target created request file: err=%v", err)
+	}
+}
+
+// The first handshake may fail while REST discovery still succeeds. Retrying
+// must install one shared WS, and existing virtual pushes must see it.
+func TestMachineWSDiscoveryRecoversAfterInitialHandshakeFailure(t *testing.T) {
+	var handshakes atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/server/handshake" {
+			http.NotFound(w, r)
+			return
+		}
+		if handshakes.Add(1) == 1 {
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"websocket":{"enabled":true,"ws_url":"ws://127.0.0.1:1"}}`)
+	}))
+	defer server.Close()
+
+	o := newTestOrchestrator()
+	o.client = panel.NewClient(config.PanelConfig{URL: server.URL, Token: "t", MachineID: 16})
+	push := &machineNodePush{nodeID: 3, wsLookup: o.currentWS}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	o.tryStartWS(ctx)
+	if o.currentWS() != nil || push.currentWS() != nil {
+		t.Fatal("a failed handshake must not install a WebSocket")
+	}
+	o.tryStartWS(ctx)
+	if o.currentWS() == nil || push.currentWS() != o.currentWS() {
+		t.Fatal("a virtual push created before recovery must discover the recovered WebSocket")
+	}
+	o.tryStartWS(ctx)
+	if got := handshakes.Load(); got != 2 {
+		t.Fatalf("unexpected handshake count %d, want 2 (skip duplicate WS clients)", got)
 	}
 }

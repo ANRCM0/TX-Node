@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
+	"sync"
+	"time"
 	"path/filepath"
 	"testing"
 )
@@ -60,5 +64,41 @@ func mustWriteConfigPath(t *testing.T, path string) {
 	}
 	if err := os.WriteFile(path, []byte("test: true\n"), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// More node workers may fail than there are top-level instances. All must exit
+// even when the main goroutine cannot consume errors until workers finish.
+func TestCancelOnServiceErrorNeverBlocksWorkers(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errorsCh := make(chan error, 1)
+	var workers sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			cancelOnServiceError(errorsCh, cancel, errors.New("node failed"))
+		}()
+	}
+	done := make(chan struct{})
+	go func() { workers.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("workers blocked reporting more errors than the channel can hold")
+	}
+	select {
+	case <-ctx.Done():
+	default:
+		t.Fatal("a fatal node error must cancel all instances")
+	}
+	if got := <-errorsCh; got == nil {
+		t.Fatal("expected the first fatal error")
+	}
+	select {
+	case <-errorsCh:
+		t.Fatal("fatal error channel should retain only one error")
+	default:
 	}
 }

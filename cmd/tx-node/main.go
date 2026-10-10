@@ -188,7 +188,7 @@ func runWithReload(initialRoot *config.RootConfig, configPath string) {
 			startHealth(instances[0].HealthPort)
 		}
 
-		errCh := make(chan error, len(instances))
+		errCh := make(chan error, 1)
 		doneCh := make(chan struct{})
 		var wg sync.WaitGroup
 		for _, instanceCfg := range instances {
@@ -201,8 +201,7 @@ func runWithReload(initialRoot *config.RootConfig, configPath string) {
 					orch := machine.New(instanceCfg)
 					if err := orch.Run(ctx); err != nil {
 						nlog.Core().Error("machine instance exited with error", "instance", instanceCfg.InstanceID, "error", err)
-						errCh <- err
-						cancel()
+						cancelOnServiceError(errCh, cancel, err)
 					}
 					return
 				}
@@ -228,8 +227,7 @@ func runWithReload(initialRoot *config.RootConfig, configPath string) {
 						svc := service.New(nodeCfg)
 						if err := svc.Run(ctx); err != nil {
 							nlog.Core().Error("node service exited with error", "instance", nodeCfg.InstanceID, "node_id", nodeCfg.Panel.NodeID, "error", err)
-							errCh <- err
-							cancel()
+							cancelOnServiceError(errCh, cancel, err)
 						}
 					}(idx)
 				}
@@ -271,6 +269,20 @@ func runWithReload(initialRoot *config.RootConfig, configPath string) {
 		root = newRoot
 		nlog.Core().Info("reload complete, services restarting with new config")
 	}
+}
+
+// cancelOnServiceError records only the first fatal error. Several nodes can
+// fail simultaneously in one instance; none may block while the parent waits
+// for all workers to stop. The caller logs each individual failure.
+func cancelOnServiceError(errors chan<- error, cancel context.CancelFunc, err error) {
+	if err == nil {
+		return
+	}
+	select {
+	case errors <- err:
+	default:
+	}
+	cancel()
 }
 
 // applyRuntimeConfig wires up Go runtime memory limits from the config file.
