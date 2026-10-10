@@ -18,15 +18,16 @@ Do not periodically merge an upstream branch into TX-Node. For a useful upstream
 TX-Node core code depends on the `ControlPlane` interface and TX-native `NodeSpec` / `UserSpec` models rather than directly on a panel implementation.
 
 - `LocalControlPlane` provides panel-free standalone operation.
+- `TXBoardControlPlane` is the native TXBoard HTTP/WebSocket `/txapi/node/v1` adapter.
 - `XboardControlPlane` is the Xboard-compatible protocol adapter.
-- machine mode uses the corresponding machine Xboard adapter with a shared websocket transport.
+- machine mode selects the provider-specific adapter and its shared websocket transport.
 - future control planes such as TuneX should be added as new adapters instead of introducing panel-specific branches throughout service/kernel code.
 
 See [`controlplane.md`](controlplane.md) for the adapter contract and extension rules.
 
 ## Optional panel plugins
 
-TX-Node does not vendor or release panel-side plugins. AccessAudit is maintained by TXBoard under `integrations/AccessAudit/`; TX-Node only implements the optional audit reporter/client that interoperates with that plugin. Plugin absence must not affect the core node/control-plane protocol.
+TX-Node does not vendor or release panel-side plugins. Its optional embedded AccessAudit reporter retains the legacy Xboard-style plugin API; only a compatible Xboard provider currently exposes the audit transport capability. The native TXBoard adapter does not expose this capability. The current TXBoard `main` branch does not contain the former `integrations/AccessAudit/` path; plugin availability must not be inferred from a historical reference. Normal control-plane and kernel functions do not require audit.
 
 ## Product-path freeze
 
@@ -39,9 +40,9 @@ TXBoard
   -> sing-box / Xray
 ```
 
-Local/standalone mode and legacy single-node/systemd management remain supported compatibility surfaces, but they are frozen for feature expansion. They may receive bug fixes, security fixes and compatibility repairs; new product features should target the canonical Machine path first.
+Local/standalone and remote single-node modes remain supported; they are separate runtime modes, not synonyms for the retired host-management CLI. Historical native/systemd deployment is supported **only as Installer migration/cleanup input**, not as an actively developed deployment method. New product work should target the canonical TXBoard Machine path first.
 
-This is a maintenance-policy change, not a removal. Any future removal requires an explicit breaking release and migration plan.
+Keeping the Xboard protocol adapter or Local/Standalone runtime does not imply restoring the retired `xbctl` executable. Removing an actually supported mode or migration path requires explicit compatibility and rollback planning.
 
 See [Runtime Boundary](./runtime-boundary.md).
 
