@@ -210,7 +210,7 @@ Machine mode owns node discovery and a shared provider-specific push transport. 
 
 ### Release and deployment
 
-The TX-Node repository builds and tests runtime binaries and multi-arch images; the Installer owns host configuration, Docker Compose, state volumes, upgrades and rollback. `main` CI validates without updating production `latest`; manual CI builds `:test`, and a stable semantic tag publishes `:latest`. Existing running nodes upgrade only through explicit Installer actions.
+The TX-Node repository builds and tests runtime binaries and multi-arch images; the Installer owns host configuration, Docker Compose, state volumes, upgrades and rollback. Each `main` push runs CI and builds the development `:dev` image plus an immutable SHA tag; pull requests validate without publishing. Only strict stable `vX.Y.Z` tags update production `:latest` and produce GitHub Releases. Preview/RC tags and the manual `:test` channel are retired. Existing running nodes upgrade only through explicit Installer actions.
 
 ## 9. Compatibility and non-goals
 
