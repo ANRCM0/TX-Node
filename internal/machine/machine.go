@@ -517,8 +517,12 @@ func (o *Orchestrator) tryStartWS(ctx context.Context) {
 // onWSEvent routes a WS event to the correct node's channel.
 // sync.nodes is a machine-level event that triggers immediate rediscovery.
 func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
-	if event.Type == panel.WSEventOpsMachineRuntimeUpdate {
-		if event.MachineRuntimeUpdate == nil {
+ o.onMachineEvent(translateMachineEvent(event, o.cfg.Kernel))
+}
+
+func (o *Orchestrator) onMachineEvent(event machineEvent) {
+	if event.Kind == machineEventRuntimeUpdate {
+		if event.RuntimeUpdate == nil {
 			nlog.Core().Warn("machine runtime update missing typed payload")
 			return
 		}
@@ -527,24 +531,24 @@ func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
 			return
 		}
 		if err := o.runtimeUpdater.Request(
-			event.MachineRuntimeUpdate.RequestID,
-			event.MachineRuntimeUpdate.Target,
+			event.RuntimeUpdate.RequestID,
+			event.RuntimeUpdate.Target,
 		); err != nil {
 			nlog.Core().Warn("machine runtime update request rejected",
-				"request_id", event.MachineRuntimeUpdate.RequestID,
+				"request_id", event.RuntimeUpdate.RequestID,
 				"error", err,
 			)
 			return
 		}
 		nlog.Core().Info("machine runtime update accepted",
-			"request_id", event.MachineRuntimeUpdate.RequestID,
-			"target", event.MachineRuntimeUpdate.Target,
+			"request_id", event.RuntimeUpdate.RequestID,
+			"target", event.RuntimeUpdate.Target,
 		)
 		return
 	}
 
 	// sync.nodes is a machine-level event, not per-node
-	if event.Type == panel.WSEventSyncNodes {
+	if event.Kind == machineEventSyncNodes {
 		nlog.Core().Info("machine received sync.nodes, triggering immediate rediscovery")
 		go o.rediscover(o.runCtx)
 		return
@@ -552,14 +556,14 @@ func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
 
 	nodeID := event.NodeID
 	if nodeID == 0 {
-		nlog.Core().Debug("machine ws event missing node_id, dropping", "type", event.Type)
+		nlog.Core().Debug("machine ws event missing node_id, dropping", "type", event.Kind)
 		return
 	}
 
-	translated, err := controlplane.TranslateWSEvent(event, o.cfg.Kernel)
+	translated, err := event.NodeEvent, event.Err
 	if err != nil {
 		nlog.Core().Warn("machine ws event translation failed",
-			"type", event.Type, "node_id", nodeID, "error", err)
+			"type", event.Kind, "node_id", nodeID, "error", err)
 		return
 	}
 
@@ -567,7 +571,7 @@ func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
 	mailbox, ok := o.mailboxes[nodeID]
 	o.eventsMu.RUnlock()
 	if !ok {
-		nlog.Core().Debug("machine ws event for unknown node", "node_id", nodeID, "type", event.Type)
+		nlog.Core().Debug("machine ws event for unknown node", "node_id", nodeID, "type", event.Kind)
 		return
 	}
 	if !mailbox.Apply(translated) && translated.OpsRequest != nil {

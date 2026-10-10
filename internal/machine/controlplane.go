@@ -51,3 +51,32 @@ func (x *xboardMachineControlPlane) ForNode(id int) machineNodeClient { return &
 func (x *xboardMachineControlPlane) ReportMachineStatus(cpu float64, mem, swap, disk [2]uint64, netIn, netOut float64, status *panel.MachineRuntimeStatus) error {
  return x.client.ReportMachineStatus(cpu, mem, swap, disk, netIn, netOut, status)
 }
+
+// machineEvent is the protocol-independent envelope delivered to the orchestrator.
+type machineEventKind string
+const (
+ machineEventNode machineEventKind = "node"
+ machineEventSyncNodes machineEventKind = "sync.nodes"
+ machineEventRuntimeUpdate machineEventKind = "ops.machine.runtime.update"
+)
+type machineRuntimeUpdate struct { RequestID string; Target string }
+type machineEvent struct {
+ Kind machineEventKind
+ NodeID int
+ NodeEvent controlplane.Event
+ RuntimeUpdate *machineRuntimeUpdate
+ Err error
+}
+func translateMachineEvent(raw panel.WSEvent, kernel config.KernelConfig) machineEvent {
+ event := machineEvent{Kind: machineEventNode, NodeID: raw.NodeID}
+ switch raw.Type {
+ case panel.WSEventSyncNodes:
+  event.Kind = machineEventSyncNodes
+ case panel.WSEventOpsMachineRuntimeUpdate:
+  event.Kind = machineEventRuntimeUpdate
+  if raw.MachineRuntimeUpdate != nil { event.RuntimeUpdate = &machineRuntimeUpdate{RequestID: raw.MachineRuntimeUpdate.RequestID, Target: raw.MachineRuntimeUpdate.Target} }
+ default:
+  event.NodeEvent, event.Err = controlplane.TranslateWSEvent(raw, kernel)
+ }
+ return event
+}
