@@ -71,6 +71,21 @@ jobs:
           grep -Eq '^github.com/ANRCM0/Xray-core v[^ ]+ h1:' go.sum
           go mod tidy -diff
 
+      - name: Validate current release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .github/release/VERSION)"
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "Invalid .github/release/VERSION: $version" >&2
+            exit 1
+          fi
+          grep -Fxq "# TX-Node $version" .github/release/NOTES.md
+          if grep -Eq 'xboard-node-linux-|xbctl-linux-|AccessAudit-plugin[.]zip' .github/release/NOTES.md; then
+            echo "Release notes list retired binary/plugin artifacts" >&2
+            exit 1
+          fi
+
       - name: Run tests
         run: make test
 
