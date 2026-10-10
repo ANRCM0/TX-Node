@@ -238,7 +238,7 @@ func (o *Orchestrator) startNode(ctx context.Context, mn panel.MachineNode) {
 		return mb
 	}
 
-	cp := controlplane.NewMachineXboardControlPlane(perNodeClient, nodeCfg.Kernel, push, registerFn)
+	cp := perNodeClient.ControlPlane(nodeCfg.Kernel, push, registerFn)
 	svc := service.NewWithControlPlane(nodeCfg, cp)
 
 	nlog.Core().Info(fmt.Sprintf("machine: starting node %d (%s/%s)",
