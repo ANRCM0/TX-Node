@@ -45,10 +45,9 @@ type Config struct {
 	// and Panel.Token are ignored; the machine token is used instead.
 	Machine *MachineConfig `yaml:"machine,omitempty"`
 
-	// Audit (optional) uses the old Xboard-compatible plugin API, when the
-	// Xboard adapter exposes AuditTarget and the panel supports those routes.
-	// TXBoard native does not currently implement this capability. Keep disabled
-	// for native TXBoard; omit this section to disable the reporter.
+	// Audit (optional) uses the provider-selected Xboard plugin adapter or
+	// TXBoard native Bearer node/v1 audit transport. It attaches only to sing-box.
+	// Disabled by default; omit this section to disable the reporter.
 	Audit AuditConfig `yaml:"audit,omitempty"`
 }
 
