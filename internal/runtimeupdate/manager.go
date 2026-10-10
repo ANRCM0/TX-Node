@@ -54,14 +54,14 @@ func (m *Manager) Available() bool {
 	}
 	return values["schema"] == "1" &&
 		values["updater_available"] == "true" &&
-		values["target"] == "latest"
+		values["target"] == "latest,dev" || values["target"] == "latest"
 }
 
 func ValidateRequest(requestID, target string) error {
 	if !requestIDPattern.MatchString(requestID) {
 		return errors.New("invalid request_id")
 	}
-	if target != "latest" {
+	if target != "latest" && target != "dev" {
 		return errors.New("unsupported update target")
 	}
 	return nil
@@ -79,7 +79,7 @@ func (m *Manager) Request(requestID, target string) error {
 		return fmt.Errorf("create update directory: %w", err)
 	}
 
-	body := fmt.Sprintf("schema=1\nrequest_id=%s\ntarget=latest\n", requestID)
+	body := fmt.Sprintf("schema=1\nrequest_id=%s\ntarget=%s\n", requestID, target)
 	tmp, err := os.CreateTemp(m.dir, ".request-*")
 	if err != nil {
 		return fmt.Errorf("create update request: %w", err)
@@ -116,7 +116,7 @@ func (m *Manager) LastStatus() *Status {
 	requestID := values["request_id"]
 	target := values["target"]
 	state := values["status"]
-	if !requestIDPattern.MatchString(requestID) || target != "latest" || !allowedStatuses[state] {
+	if !requestIDPattern.MatchString(requestID) || (target != "latest" && target != "dev") || !allowedStatuses[state] {
 		return nil
 	}
 
