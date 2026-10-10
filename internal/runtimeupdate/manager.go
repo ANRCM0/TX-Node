@@ -51,6 +51,23 @@ func (m *Manager) Available() bool {
 	return m.supportsTarget("latest")
 }
 
+// SupportedTargets returns only the fixed update targets advertised by a
+// validated Installer bridge, never arbitrary image names from configuration.
+func (m *Manager) SupportedTargets() []string {
+	values, err := parseEnvFile(m.capabilityPath(), 8, 512)
+	if err != nil || values["schema"] != "1" || values["updater_available"] != "true" {
+		return nil
+	}
+	switch values["target"] {
+	case "latest":
+		return []string{"latest"}
+	case "latest,dev":
+		return []string{"latest", "dev"}
+	default:
+		return nil
+	}
+}
+
 // Older Installer capability files advertise only latest; accepting dev requires
 // an explicit new bridge advertisement, not just a legacy updater marker.
 func (m *Manager) supportsTarget(target string) bool {
