@@ -412,6 +412,24 @@ generates the same canonical target and owns legacy migration/cleanup. A bounded
 `/etc/xboard-node/config.yml` startup fallback remains only for already-generated
 Compose files and is not a second source of configuration truth.
 
+### S5 — runtime reliability hardening
+
+S5 hardens the established runtime boundaries without introducing a new
+architecture layer:
+
+- fatal errors across many nodes are reported without blocking worker teardown;
+- Machine-mode shared WebSocket discovery is retried after startup handshake
+  failures or initial REST-only negotiation; existing node mailboxes and virtual
+  push clients can use a later-established shared transport;
+- machine rediscovery is serialized when triggered by both polling and WS;
+- per-node mailbox typed operations use a bounded FIFO; overflow is rejected
+  explicitly with `ops_queue_full` instead of growing memory without bound;
+- machine traffic reports forward their stable batch IDs so durable retry
+  remains idempotent on the matching control-plane backend.
+
+S5 adds focused regression coverage for these failure paths. No ControlPlane
+protocol compatibility or deployment lifecycle behavior is intentionally changed.
+
 ## 9. Non-goals
 
 This simplification effort does not:
