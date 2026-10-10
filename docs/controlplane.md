@@ -16,7 +16,7 @@ The core service consumes only the `ControlPlane` contract (`Source` + `Sink`) a
                                          |
                               +----------+----------+
                               |                     |
-                     XboardControlPlane      future adapters
+                     XboardControlPlane      TXBoardControlPlane
                                                   (TuneX, ...)
 ```
 
@@ -27,6 +27,10 @@ Protocol-specific JSON, authentication fields, REST paths and websocket event fo
 ### LocalControlPlane
 
 Local standalone mode is panel-free. Node configuration and users are read from the local TX-Node configuration and no remote reporting is performed.
+
+### TXBoardControlPlane
+
+`TXBoardControlPlane` handles native `/txapi/node/v1` Bearer + identity headers, HTTP handshake/config/users/report and optional versioned WebSocket. Machine mode uses an independent transport with per-node adapters and the existing mailbox/mux. Successful traffic HTTP 202 means queued, not SQL committed; the durable retry spool and TXBoard ledger must be verified together in staging.
 
 ### XboardControlPlane
 
@@ -130,6 +134,6 @@ with:
 
 When the Installer capability marker is absent, TX-Node reports `updater_available=false` and rejects the request without writing an update file.
 
-Machine status reports runtime-derived metadata additively through the existing `POST /api/v2/server/machine/status` heartbeat, including current build version, updater availability, and the bounded last Installer update status.
+Machine status reports runtime-derived metadata additively via native `POST /txapi/node/v1/machine/status` (or the Xboard compatibility endpoint in xboard mode), including current build version, updater availability, and the bounded last Installer update status.
 
 This is separate from per-node Node Ops. A machine runtime update restarts the TX-Node deployment and can briefly disconnect every node hosted by that machine.
