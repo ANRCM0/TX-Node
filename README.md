@@ -59,13 +59,19 @@ make docker
 
 ## 镜像发布策略
 
-TX-Node 的 CI 分离了验证、测试镜像和正式发布，普通合并不会直接覆盖生产使用的 `latest`：
+TX-Node **只有开发版和稳定版两个发布渠道**，不再发布预览版、RC 或独立的 `:test` 镜像。
 
-- **合并/推送 `main`**：运行 Go 测试与稳定性测试；**不推送 Docker 镜像**。
-- **手动构建测试镜像**：到 [CI Actions](https://github.com/ANRCM0/TX-Node/actions/workflows/ci.yml) 选择 `main`，点击 **Run workflow**。成功后推送 `ghcr.io/anrcm0/tx-node:test` 和精确提交 SHA 标签，**不会修改 `latest`**。
-- **正式发布**：将经过验证的源码打上符合语义化版本的 `vX.Y.Z` 标签。tag CI 完成测试、双架构构建和镜像发布，推送 `ghcr.io/anrcm0/tx-node:vX.Y.Z` 与 `:latest`，并生成 GitHub Release。预发布标签（例如 `v2.3.0-rc.1`）不更新 `latest`。
-- **可选的版本发布向导**：[Publish semantic release](https://github.com/ANRCM0/TX-Node/actions/workflows/publish-release.yml) 只接受人工从 `main` 触发。使用前必须更新 `.github/release/VERSION` 与 `.github/release/NOTES.md` 到相同的新版本并清除过时资产说明。仅编辑这些文件不会自动发布。
-- 已安装的节点不会因为 GHCR 标签更新而自行升级；实际升级仍由 TX-Node-Installer 管理。
+| 渠道 | 自动触发条件 | GHCR 镜像 | GitHub Release |
+| --- | --- | --- | --- |
+| **开发版** | 每次 Push/合并到 `main`，且 Go 测试与运行时稳定性测试通过 | `ghcr.io/anrcm0/tx-node:dev` + 每提交独立的 `:<完整SHA>` | 不创建 |
+| **稳定版** | 推送严格匹配 `vX.Y.Z` 的 Git Tag，并通过全部测试 | `ghcr.io/anrcm0/tx-node:vX.Y.Z`、`:latest` + `:<完整SHA>` | 发布 Linux amd64/arm64 二进制与正式说明 |
+
+- Pull Request、`dev` / `master` 分支普通 Push 只运行验证，不发布镜像；`main` 的**每次提交**都有独立的 SHA 构建，旧提交的慢速任务不会把 `:dev` 回退成旧版本。
+- `:dev` 指向当前成功构建且仍是 `main` 最新提交的镜像；若最新提交正在构建或构建失败，`:dev` 仍指向上一次成功发布的开发镜像。
+- 稳定版只接受 `v<主版本>.<次版本>.<补丁版本>`（例如 `v2.3.0`）。包含连字符的预览/RC Tag 会被校验拒绝，绝不会更新 `:latest`。
+- 发布前先更新 `.github/release/VERSION` 与 `.github/release/NOTES.md`，确保内容和 Tag 完全一致。可直接将对应的稳定 Tag 推到 GitHub，或使用 [Publish semantic release](https://github.com/ANRCM0/TX-Node/actions/workflows/publish-release.yml) 从 `main` 创建该 Tag 并调度 Tag CI。
+- 开发版不应部署到生产环境。安装器默认使用稳定渠道 `:latest`；更新 GHCR 标签不会自动更新正在运行的容器，实际升级需由 [TX-Node-Installer](https://github.com/ANRCM0/TX-Node-Installer) 执行。
+- **发布不等于上线验收**：首次启用原生 TXBoard 模式前，仍需验证 Machine / Node 联调、WS、双内核及异步流量队列结算与持久化重放。
 
 ## 访问审计（可选、兼容性功能）
 
