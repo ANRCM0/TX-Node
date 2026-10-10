@@ -10,8 +10,3 @@ func newMachineControlPlane(provider string, cfg config.PanelConfig) (machineCon
  default: return nil, fmt.Errorf("unsupported machine control-plane provider %q", provider)
  }
 }
-func mustMachineControlPlane(provider string, cfg config.PanelConfig) machineControlPlane {
- cp, err := newMachineControlPlane(provider, cfg)
- if err != nil { panic(err) }
- return cp
-}

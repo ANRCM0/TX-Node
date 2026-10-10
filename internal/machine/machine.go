@@ -115,22 +115,31 @@ func backoffFor(attempt int) time.Duration {
 }
 
 // New creates a machine orchestrator from the given config.
-func New(cfg *config.Config) *Orchestrator {
+func NewChecked(cfg *config.Config) (*Orchestrator,error) {
 	panelCfg := config.PanelConfig{
 		URL:       cfg.Panel.URL,
 		Token:     cfg.Machine.Token,
 		MachineID: cfg.Machine.MachineID,
 	}
-	return &Orchestrator{
+ cp, err := newMachineControlPlane(cfg.Panel.Provider, panelCfg)
+ if err != nil {return nil,err}
+ return &Orchestrator{
 		cfg:       cfg,
-		client:    mustMachineControlPlane(cfg.Panel.Provider, panelCfg),
+		client:    cp,
 		nodes:     make(map[int]*nodeHandle),
 		mailboxes: make(map[int]*controlplane.NodeMailbox),
 		statuses:  make(map[int]chan<- controlplane.StatusChange),
 		failures:       make(map[int]*nodeFailure),
 		runtimeUpdater: runtimeupdate.New(runtimeupdate.DefaultDir),
-	}
+	},nil
 }
+
+// New retains the original constructor for validated configs.
+func New(cfg *config.Config) *Orchestrator {
+ orch,_ := NewChecked(cfg)
+ return orch
+}
+
 
 // Run is the main loop. It blocks until ctx is cancelled.
 func (o *Orchestrator) Run(ctx context.Context) error {

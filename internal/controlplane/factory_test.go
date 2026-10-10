@@ -32,3 +32,18 @@ func TestNewForConfig(t *testing.T) {
 		t.Fatalf("remote factory returned %T, want *XboardControlPlane", remote)
 	}
 }
+
+func TestNewForConfigCheckedUnsupported(t *testing.T) {
+ for _, p := range []string{"txboard", "unknown"} {
+  cfg := &config.Config{Panel: config.PanelConfig{Provider:p}}
+  cp, err := NewForConfigChecked(cfg)
+  if err == nil || cp != nil { t.Fatalf("provider %q: cp=%T err=%v",p,cp,err) }
+  if got := NewForConfig(cfg); got != nil {t.Fatalf("legacy constructor returned %T",got)}
+ }
+}
+func TestStandaloneOverridesUnsupportedProvider(t *testing.T) {
+ cfg := &config.Config{Panel: config.PanelConfig{Provider:"txboard"},Standalone:&config.StandaloneConfig{Enabled:true}}
+ if got:=ProviderForConfig(cfg);got!=ProviderLocal {t.Fatalf("got %q",got)}
+ cp,err:=NewForConfigChecked(cfg)
+ if err!=nil || cp==nil {t.Fatalf("cp=%T err=%v",cp,err)}
+}
