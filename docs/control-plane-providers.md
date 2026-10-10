@@ -1,25 +1,55 @@
-# Control-plane provider selection
+# Control Plane Providers
 
-TX-Node uses `panel.provider` for remote protocol selection in both node mode and machine mode.
+TX-Node has three supported control-plane implementations: `txboard` (native), `xboard` (compatibility) and `local` (standalone). The runtime and kernel consume provider-neutral `NodeSpec` and `UserSpec` models; protocol-specific HTTP and WebSocket handling stays in the adapters.
 
-- Omitted or `xboard`: existing Xboard-compatible protocol (default).
-- `txboard`: TXBoard native node/v1 adapter (Bearer + identity headers, versioned HTTP/WSS).
-- Standalone mode: always selects the local control plane.
+## Selecting a remote provider
+
+| `panel.provider` | Protocol | Node | Machine | Notes |
+| --- | --- | --- | --- | --- |
+| `txboard` | TXBoard `/txapi/node/v1/*` | Yes | Yes | Bearer + node/machine identity headers; optional native WebSocket |
+| `xboard` (default) | Xboard V1/V2 | Yes | Yes | Preserves deployed Xboard protocol compatibility |
+| Other | Unsupported | — | — | Startup validation rejects unknown values |
+
+Standalone mode uses the local control plane, configured through `standalone`; it does not contact a panel.
+
+Example for a native TXBoard Node:
 
 ```yaml
 panel:
-  provider: xboard
-  url: https://panel.example.com
-  token: your-token
+  provider: txboard
+  url: "https://panel.example.com"
+  token: "REPLACE_WITH_NODE_TOKEN"
   node_id: 1
+kernel:
+  type: singbox
+audit:
+  enabled: false
 ```
 
-TXBoard native transport uses /txapi/node/v1 and does not send Xboard-style query/body credentials. Node/machine DTOs are normalized before reaching Service.
+Example for a native TXBoard Machine:
 
-## S7 implementation and S8 handoff
+```yaml
+panel:
+  provider: txboard
+  url: "https://panel.example.com"
+machine:
+  machine_id: 2
+  token: "REPLACE_WITH_MACHINE_TOKEN"
+kernel:
+  type: singbox
+```
 
-Node mode and machine mode both select their remote provider from `panel.provider`. Unsupported values fail closed; both `xboard` and `txboard` are implemented. The checked constructors (`controlplane.NewForConfigChecked`, `service.NewChecked`, and `machine.NewChecked`) return errors to the startup path instead of panicking. Existing convenience constructors remain for legacy callers; new code should prefer checked constructors.
+For Xboard, change `provider` to `xboard` and provide the compatible panel token/node identity. See the root [config example](../config.yml.example) for multiple instances.
 
-Multi-instance configuration inherits `panel.provider` from the parent when omitted and preserves explicit child values. Standalone selects the local control plane independently of remote provider selection, subject to configuration validation.
+## Protocol behavior and boundaries
 
-Native TXBoard v1 requires server-side `/txapi/node/v1` endpoints, the corresponding Bearer/ID identity, and optional Workerman WSS. HTTP 202 on usage report acknowledges queue acceptance only; SQL settlement must be verified in TXBoard. Test real kernel connectivity, queue failures, WSS upgrades and token rotation before a production rollout.
+- **TXBoard HTTP:** `/txapi/node/v1` with `Authorization: Bearer`, `X-TX-Node-ID` and/or `X-TX-Machine-ID`. No credentials in query parameters. Versioned `data` response envelope; config and user snapshots can return HTTP 304 based on separate ETags.
+- **TXBoard WebSocket:** versioned event frames and machine-scoped multiplexing; availability depends on the panel-side Workerman/native-WS configuration. HTTP polling operates without native WS.
+- **Traffic:** `202 queued` means the batch was accepted into the panel's asynchronous queue, **not** committed to its billing ledger. TX-Node's persistent pending-batch spool and TXBoard's idempotent batch settlement require end-to-end verification.
+- **Legacy AccessAudit:** The embedded reporter expects the optional Xboard-style `/api/v1/plugin/access-audit/*` API. Currently only the Xboard adapter exposes the required audit capability. The `txboard` adapter does **not** implement native access-audit reporting; leave `audit.enabled: false` for native TXBoard deployments.
+- **Compatibility:** Preserve the Xboard adapter and the Installer migration boundaries. Deprecated executable names and legacy configuration paths are *migration inputs*, not active release targets.
+- **Factories:** `controlplane.NewForConfigChecked`, `service.NewChecked`, and `machine.NewChecked` report unsupported provider errors. Multi-instance settings inherit `panel.provider` when omitted.
+
+## Production acceptance
+
+Before rolling out a new native runtime, verify real TXBoard + TX-Node + Installer connectivity for Node and Machine, credentials and token rotation, HTTP 304 handling, optional native WebSocket, kernel protocols, traffic retry/idempotency, durable replay after restart and queue/ledger settlement. Passing unit tests or publishing an image is not production acceptance.
