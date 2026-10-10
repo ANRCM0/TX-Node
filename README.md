@@ -73,26 +73,20 @@ TX-Node **只有开发版和稳定版两个发布渠道**，不再发布预览�
 - 开发版不应部署到生产环境。安装器默认使用稳定渠道 `:latest`；更新 GHCR 标签不会自动更新正在运行的容器，实际升级需由 [TX-Node-Installer](https://github.com/ANRCM0/TX-Node-Installer) 执行。
 - **发布不等于上线验收**：首次启用原生 TXBoard 模式前，仍需验证 Machine / Node 联调、WS、双内核及异步流量队列结算与持久化重放。
 
-## 访问审计（可选、兼容性功能）
+## 访问审计（可选 · 双面板）
 
-TX-Node 保留 `sing-box` 的嵌入式访问审计 reporter，但它不是原生 TXBoard 节点协议的一部分；默认关闭，且不参与正常用户、配置、流量计费与节点状态同步。
+**一个 sing-box Reporter、两个协议适配器。** 数据采集、规则匹配、限长队列和失败重试是共享实现；根据 `panel.provider` 选择审计规则/上报传输。默认关闭，不作为流量计费依据。
 
-| 部署模式 | 访问审计支持情况 |
-| --- | --- |
-| Xboard 兼容 Provider (`panel.provider: xboard`) | 保留旧版可选 reporter，要求面板**实际提供并启用**兼容 `/api/v1/plugin/access-audit/rules` 与 `/report` 的插件接口 |
-| TXBoard 原生 Provider (`panel.provider: txboard`) | **当前不支持旧审计上报**；保持 `audit.enabled: false` |
-| Xray / Standalone | 无内置的同等审计能力；不要把嵌入式 sing-box reporter 视为通用功能 |
+| Provider | 审计 API | 面板端要求 |
+| --- | --- | --- |
+| Xboard `xboard` | 保留 `/api/v1/plugin/access-audit/rules` 和 `/report`，原 Xboard 插件认证不变 | 需另外安装并启用兼容的 AccessAudit 服务端插件 |
+| TXBoard `txboard` | 原生 `/txapi/node/v1/audit/rules` 与 `/audit/report`，Bearer + Node/Machine 身份请求头 | TXBoard 原生规则/日志管理模块及迁移表 |
 
-当前 TXBoard `main` **没有** `integrations/AccessAudit` 目录，且原生 `/txapi/node/v1` 未定义旧插件审计接口。因此不再提供原先的失效源码链接，也不将该插件作为 TXBoard 的内置能力宣传。历史兼容插件的来源、安装方式和接口可用性须由实际部署独立验证。
+TXBoard 后台入口：**节点管理 → 访问审计**，可增删编辑规则、启停规则并查询记录；默认的管理员操作审计日志是另一套功能。TXBoard 原生上报为每个连接事件生成可重试的稳定随机 ID，服务端按节点和事件 ID 去重。API 最多接受 200 条/批，1 MiB 请求体。Xboard 兼容 payload 不变。
 
-仅在已验证的 Xboard 兼容部署中，可显式选择：
+示例（两个 Provider 都适用，前提是面板实现了对应审计接收接口）：
 
 ```yaml
-panel:
-  provider: xboard
-  url: "https://xboard.example.com"
-  token: "REPLACE_WITH_SERVER_TOKEN"
-  node_id: 1
 audit:
   enabled: true
   report_all: false
@@ -102,9 +96,13 @@ audit:
   queue_cap: 5000
 ```
 
-`report_all: false` 只上报命中规则的连接；如果面板没有下发启用规则，则不会产生审计上报。`report_all: true` 会显著增加事件量；本地队列受容量限制，拥塞时可能丢弃审计事件。**审计日志不作为流量计费依据**。
+- **`report_all: false`（默认）**：只上报规则命中，0 条启用规则 = 0 条事件；`report_all: true` 会采集全部观察到的连接并显著提高隐私与性能成本。
+- **仅 sing-box** 的内嵌连接采集已适配；Xray、Standalone 暂不具备同等嵌入式采集能力。
+- 审计队列位于内存，拥塞/进程异常时可能丢失日志；与持久化的流量计费待确认批次完全隔离，不保证审计恰好一次或崩溃后重放。
+- TXBoard 默认 30 天留存，依赖部署方持续运行 Laravel 调度器（`schedule:run`）。日志可含敏感访问目标和来源 IP，只有授权管理员应有查询权限。
+- 上线需先部署原生 TXBoard API/数据表，更新节点镜像，再显式启用 `audit.enabled`。使用旧 TXBoard 版本时请保持关闭。
 
-相关实现：[审计 reporter](internal/audit/reporter.go)、[ControlPlane 审计能力接口](internal/controlplane/capabilities.go)。原生 TXBoard 访问审计如需支持，必须先单独定义其 API、鉴权和行为契约，不应直接复用旧 Query Token 机制。
+相关实现：[Reporter](internal/audit/reporter.go)、[双传输适配器](internal/audit/transport.go)、[可选能力](internal/controlplane/capabilities.go)、[原生协议契约](https://github.com/ANRCM0/TXBoard/blob/main/contracts/node-protocol/access-audit-v1.md)。
 
 ## Xboard 兼容与项目来源
 
