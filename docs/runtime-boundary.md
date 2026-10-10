@@ -4,7 +4,7 @@ Status: **active architecture baseline**
 
 TX-Node is a dedicated Agent / Data Plane runtime for TXBoard and compatible control planes. It is not a second control plane and it is not a general-purpose host management agent.
 
-The simplification goal is:
+The runtime design principle is:
 
 > Keep TX-Node small enough that its core responsibility can be stated as: receive bounded control-plane intent, run proxy nodes, enforce user/runtime policy, and report bounded runtime state.
 
@@ -64,7 +64,9 @@ sing-box / Xray adapters own protocol-specific packet/runtime implementation. TX
 
 The following remain supported, but they do not expand the Core domain:
 
-- Xboard-compatible ControlPlane adapter;
+- TXBoard native Node/Machine ControlPlane adapter;
+- Xboard-compatible Node/Machine ControlPlane adapter;
+- Local/Standalone ControlPlane adapter;
 - sing-box backend;
 - Xray backend.
 
@@ -72,10 +74,10 @@ Protocol-specific behavior should stay behind adapters. New panel-specific branc
 
 ## 4. Compatibility surfaces
 
-The following remain compatibility surfaces and are **frozen for feature expansion**:
+The following have distinct compatibility obligations; historical deployment paths are **frozen for feature expansion**:
 
 - Local / standalone ControlPlane;
-- legacy single-node Xboard deployment behavior;
+- remote single-node mode (supported, though TXBoard Machine mode is preferred for new managed deployments);
 - legacy native/systemd layout as an Installer migration source;
 - legacy `/etc/xboard-node` host paths as Installer migration input;
 - legacy container `/etc/xboard-node/config.yml` only as a bounded startup fallback for already-generated Compose files.
@@ -90,7 +92,7 @@ The TX-Node v2 mainline no longer builds or publishes the historical
 `xboard-node` binary alias or `xbctl`. Host migration/cleanup responsibility
 belongs to TX-Node-Installer.
 
-Frozen means:
+Frozen-for-expansion means:
 
 - bug fixes and security fixes are allowed;
 - compatibility regressions are fixed;
@@ -105,7 +107,7 @@ Optional capabilities must not quietly grow into core orchestration.
 
 Current optional capabilities include:
 
-- Access Audit reporter/client;
+- Xboard-compatible AccessAudit reporter/client (not provided by TXBoard native Node API);
 - certificate automation;
 - DNS-provider integrations used by ACME;
 - custom geo/routing assets.
@@ -179,269 +181,43 @@ Before adding a new TX-Node feature, answer these questions in order:
 
 A feature being useful on a server is not sufficient reason to add it to TX-Node.
 
-## 8. Simplification roadmap
-
-### S1 — boundary + Node Ops isolation — complete
-
-Completed in the first simplification PR:
-
-- defined this runtime boundary;
-- moved typed Node Ops dispatch/replay/log/network logic out of the Service god-object;
-- preserved all Node Ops contracts and behavior;
-- froze feature expansion of standalone/legacy management surfaces.
-
-### S2 — Service decomposition — complete
-
-S2 decomposes Service orchestration by responsibility without changing contracts.
-
-Completed S2 slices:
-
-1. REST snapshot polling extracted into `internal/nodesync.Controller`:
+## 8. Current controller and runtime ownership
 
 ```text
-Service
-  -> supplies current config hash + cert renewal fact
-  -> nodesync.Controller
-       -> overlap prevention
-       -> retry/backoff
-       -> ControlPlane Poll
-       -> config/user hashing
-       -> immutable Result
-  -> Service sync adapter validates/applies result
+TXBoard native / Xboard compatible / Local
+    -> internal/controlplane  (Source + Sink, native models)
+    -> internal/service       (orchestration and validation)
+         -> nodesync          (REST snapshot polling, retry and hashing)
+         -> pushsync          (WS status/event lifecycle)
+         -> userstate         (desired users / limiter indexes)
+         -> reporting         (durable batch delivery, retry and replay)
+         -> kernellifecycle   (applied runtime, Start/Reload/Stop)
+         -> certcoord         (TLS normalization and certificate coordination)
+         -> auditcoord        (optional Xboard-only AccessAudit attachment)
+         -> geoassets        (optional geo/routing asset provisioning)
+         -> nodeops           (bounded allow-listed operations)
+    -> internal/kernel        (sing-box or Xray)
 ```
 
-2. Push/WebSocket connection lifecycle extracted into `internal/pushsync.Controller`:
+Machine mode owns node discovery and a shared provider-specific push transport. Each discovered node has isolated runtime state and mailbox; rediscovery and retry must be bounded and must not propagate one node's transient failure into other nodes.
 
-```text
-ControlPlane Initial / Discover
-        -> pushsync.Controller
-             -> event/status channels
-             -> PushClient start/stop
-             -> connected/disconnected lifecycle
-             -> delayed discovery eligibility
-        -> Service push adapter
-             -> logs
-             -> REST reconcile request
-             -> device-state clearing
-             -> event application
-```
+### State, reporting and optional integrations
 
-The controllers own transport/synchronization mechanics only. Service remains authoritative for validating and applying data-plane state.
+- **Desired vs applied:** user-state and the kernel's successfully applied snapshot are separate; failed changes must not falsely update the applied-state truth.
+- **Durable reporting:** `traffic_batch_id` remains stable across timeout/restart replay, backed by writable persistent `kernel.config_dir`. Native TXBoard HTTP 202 confirms queue acceptance, not MySQL settlement. Follow [durable traffic reporting](./traffic-durable-replay.md).
+- **AccessAudit:** the embedded reporter uses the legacy Xboard plugin protocol. The native TXBoard adapter intentionally does not expose `AuditTargetProvider`; `audit.enabled` should remain off for native deployments until a dedicated contract exists.
+- **Certificates/geo assets:** existing ACME DNS-provider compatibility is managed behind `certcoord`, and geo acquisition behind `geoassets`; kernel adapters execute proxy routing. Integrations must not turn into an unrestricted host-management runtime.
 
-3. Desired user runtime state extracted into `internal/userstate.Controller`:
+### Release and deployment
 
-```text
-ControlPlane users
-      -> Service user adapter
-      -> userstate.Controller
-           -> desired user snapshot + hash
-           -> limiter index
-           -> speed-limiter index
-      -> Service kernel mutation
-           -> success keeps desired state
-           -> failure restores previous snapshot
-```
+The TX-Node repository builds and tests runtime binaries and multi-arch images; the Installer owns host configuration, Docker Compose, state volumes, upgrades and rollback. Each `main` push runs CI and builds the development `:dev` image plus an immutable SHA tag; pull requests validate without publishing. Only strict stable `vX.Y.Z` tags update production `:latest` and produce GitHub Releases. Preview/RC tags and the manual `:test` channel are retired. Existing running nodes upgrade only through explicit Installer actions.
 
-The controller owns only desired user state and derived limiter indexes. The proxy kernel remains the authoritative executor of applied users, tracked separately by `Service.appliedState`.
+## 9. Compatibility and non-goals
 
-4. Report delivery lifecycle extracted into `internal/reporting.Controller`:
+- Keep Xboard protocol support independent of native TXBoard support; do not implement panel-name conditionals inside the kernel.
+- Keep legacy config-path fallback bounded to old Compose startup and old native/systemd detection confined to Installer migration/cleanup.
+- Do not restore retired `xbctl` or `xboard-node` build artifacts.
+- Do not grant TX-Node arbitrary shell, Docker socket, SSH, filesystem control, or access to TXBoard business database internals.
+- Do not treat the optional audit reporter, Xray, standalone, or certificate backends as disposable leftovers: changing a supported capability requires an explicit contract and migration review.
 
-```text
-Service report adapter
-      -> prepares runtime payload
-      -> reporting.Controller
-           -> overlap prevention
-           -> retry/backoff
-           -> async/sync Sink.Report
-      -> Service callback
-           -> restore flushed traffic/devices on async failure
-           -> success logging
-```
-
-The reporting controller owns delivery mechanics only. Runtime metric collection and tracker flush/restore stay behind the Service adapter so reporting cannot mutate unrelated data-plane state.
-
-5. Disruptive kernel lifecycle extracted into `internal/kernellifecycle.Controller`:
-
-```text
-Service kernel adapter
-      -> kernellifecycle.Controller
-           -> Start
-           -> Reload
-           -> Stop / no-user stop
-           -> applied runtime bookkeeping
-      -> sing-box / Xray Kernel
-```
-
-The controller owns only disruptive lifecycle transitions and the last successfully applied full config/user snapshot. Atomic user add/remove/update remains in the existing kernel user API and is not duplicated.
-
-6. Certificate coordination isolated behind `internal/certcoord.Coordinator`:
-
-```text
-Service / ControlPlane cert intent
-        -> certcoord.Coordinator
-             -> lifecycle + TLS material facts
-             -> panel cert_config normalization
-             -> legacy compatibility mapping
-        -> existing cert.Manager
-             -> self / file / content
-             -> HTTP ACME / DNS ACME
-             -> persistence / renewal
-```
-
-The coordinator is an adapter over the existing certificate runtime. It does not reimplement ACME, DNS providers, persistence, PEM validation or renewal.
-
-S2 is complete. The top-level Service is now orchestration over dedicated synchronization, push, user-state, reporting, kernel-lifecycle and certificate adapters/controllers.
-
-The next architecture stage is S3 optional-capability slimming. S3 must review each optional capability independently and preserve compatibility before any removal.
-
-The top-level Service remains orchestration only.
-
-### S3 — optional capability slimming — complete
-
-S3 reviews optional capabilities independently. The objective is dependency
-direction and replaceability first; feature removal requires a separate
-compatibility decision.
-
-First S3 slice: Access Audit attachment isolation.
-
-```text
-Service
-   -> auditcoord.Coordinator
-        -> ControlPlane AuditTarget capability
-        -> optional runtime audit hook
-        -> existing audit.Reporter
-```
-
-The coordinator owns only configuration/identity mapping and optional runtime
-attachment. The existing `audit.Reporter` remains authoritative for rule
-refresh, matching, buffering and report transport. sing-box remains the only
-current runtime that exposes the audit hook; Xray/standalone behavior is
-unchanged.
-
-This slice intentionally does not:
-
-- change Access Audit HTTP endpoints or authentication;
-- move audit rules/reporting into TXBoard Core;
-- add audit support to Xray;
-- stop or redesign the reporter goroutine;
-- remove the embedded audit capability.
-
-Second S3 slice: ACME / DNS provider catalog boundary.
-
-The existing built-in DNS providers remain supported, but the catalog is now a
-frozen compatibility surface rather than an open-ended Core growth point.
-
-```text
-Service runtime validation
-        -> certcoord.ValidateNodeConfig
-        -> built-in dnsproviders catalog
-        -> existing cert.Manager DNS-01 runtime
-```
-
-Core Service no longer imports or queries the DNS-provider registry directly.
-Provider-name validation stays with certificate coordination. The current
-provider set and aliases remain unchanged and are regression-tested as a
-compatibility set.
-
-This slice intentionally does not:
-
-- remove any built-in DNS provider;
-- change DNS credentials or `dns_env`;
-- change ACME behavior;
-- create a new plugin/runtime loader inside TX-Node.
-
-New provider expansion should require an explicit optional-integration design
-instead of adding more provider code to Core by default.
-
-Third S3 slice: geo / routing assets.
-
-The review separates **route execution** from **optional asset acquisition**:
-
-- structured routes, custom outbounds and route compilation remain TX-Node Core
-  because they directly define Data Plane packet routing;
-- automatic GeoIP / GeoSite asset acquisition is optional host/runtime support
-  and is isolated behind `internal/geoassets.Coordinator`.
-
-```text
-Xray route requirement
-        -> geoassets.Coordinator
-             -> existing kernel/geodata downloader
-             -> compatibility XRAY_LOCATION_ASSET preparation
-        -> Xray route compilation / execution
-```
-
-The existing downloader remains authoritative for download URLs and filesystem
-behavior. Xray no longer owns HTTP/filesystem acquisition details directly.
-
-`XRAY_LOCATION_ASSET` remains process-scoped compatibility state in S3. The
-coordinator makes that side effect explicit without changing existing
-multi-instance semantics. Any future replacement with Installer-provisioned
-assets requires a separate contract and migration plan.
-
-S3 is complete. Review outcomes:
-
-1. Access Audit remains optional but attaches through `auditcoord`;
-2. the built-in ACME DNS-provider catalog remains supported but frozen behind
-   certificate coordination;
-3. route execution stays Core, while geo asset acquisition is isolated for
-   future delegation.
-
-No optional capability was removed in S3.
-
-### S4 — compatibility stabilization + retirement assessment — complete
-
-S4 begins with assessment and stabilization, not deletion.
-
-See [S4 Compatibility Inventory](./legacy-compatibility-inventory.md).
-
-Current S4 sequence:
-
-1. **S4-A — compatibility inventory — complete**: classify canonical, supported-adapter,
-   frozen-compatibility and migration-only surfaces; define retirement gates;
-2. **S4-B — post-S3 runtime stabilization — complete**: strengthen race/lifecycle tests for
-   the extracted controllers;
-3. **S4-C — freeze enforcement — complete**: CI rejects reintroduction of the
-   retired `xbctl`, `xboard-node-linux-*` release artifacts and Docker alias;
-4. **S4-D — versioned retirement — complete**: the operator explicitly authorized removal
-   of the historical `xbctl` / `xboard-node` release surfaces after the
-   Installer gained migration and cleanup ownership.
-
-S4-D is complete: source/build/release aliases are retired; TX-Node uses
-`/etc/txnode/config.yml` as the canonical container path; TX-Node-Installer
-generates the same canonical target and owns legacy migration/cleanup. A bounded
-`/etc/xboard-node/config.yml` startup fallback remains only for already-generated
-Compose files and is not a second source of configuration truth.
-
-### S5 — runtime reliability hardening
-
-S5 hardens the established runtime boundaries without introducing a new
-architecture layer:
-
-- fatal errors across many nodes are reported without blocking worker teardown;
-- Machine-mode shared WebSocket discovery is retried after startup handshake
-  failures or initial REST-only negotiation; existing node mailboxes and virtual
-  push clients can use a later-established shared transport;
-- machine rediscovery is serialized when triggered by both polling and WS;
-- per-node mailbox typed operations use a bounded FIFO; overflow is rejected
-  explicitly with `ops_queue_full` instead of growing memory without bound;
-- machine traffic reports forward their stable batch IDs so durable retry
-  remains idempotent on the matching control-plane backend.
-
-S5 adds focused regression coverage for these failure paths. No ControlPlane
-protocol compatibility or deployment lifecycle behavior is intentionally changed.
-
-## 9. Non-goals
-
-This simplification effort does not:
-
-- remove Xboard protocol compatibility;
-- remove Xray;
-- remove standalone mode immediately;
-- remove certificate modes immediately;
-- remove Access Audit immediately;
-- change Node Protocol contracts;
-- change Machine Runtime Update v1;
-- change TXBoard data models;
-- introduce a new plugin system inside TX-Node.
-
-The first objective is dependency direction and responsibility clarity, not deletion for its own sake.
+The canonical compatibility classifications and migration safeguards are in [compatibility inventory](./legacy-compatibility-inventory.md). Control-plane adapter semantics are in [controlplane.md](./controlplane.md).

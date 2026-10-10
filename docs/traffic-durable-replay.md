@@ -1,21 +1,13 @@
-# Durable pending traffic replay (Phase 2)
+# Durable traffic reporting and replay
 
-TX-Node persists exactly one unacknowledged traffic batch before HTTP delivery.
-The batch includes a stable random `traffic_batch_id` and the byte counters.
-The on-disk file lives beneath the configured `kernel.config_dir`; this path
-**must be mounted on a durable writable volume** (not an ephemeral container
-overlay) for replay across container replacement.
+TX-Node persists one unacknowledged traffic batch before sending it. The batch contains the immutable counters and a stable `traffic_batch_id`. Timeouts and retries reuse the **same** batch ID and payload; restarting the runtime replays pending data before sending newly accumulated counters.
 
-On a response timeout, TX-Node retains the same batch for retry, without
-flushing or merging new tracker bytes. On process restart, it loads the
-pending batch and submits the same ID and payload before any fresh traffic.
-A successful HTTP acknowledgement deletes the durable spool file.
+The pending file lives beneath `kernel.config_dir` (default: the directory containing `config.yml`). This directory **must be writable and persistent across container replacement**. New Installer-managed Compose layouts bind-mount the host `$INSTALL_DIR/data` onto `/etc/txnode` and mount the YAML file read-only inside it. Existing deployments need explicit data migration before adding the new directory mount; otherwise an empty host directory can hide pending traffic in the old container layer.
 
-Startup fails closed if the spool is corrupt, unreadable or its directory is
-not writable. Permissions are owner-only (0600). Avoid running two active
-TX-Node processes with the same panel/node identity and state directory.
-The application does not yet guarantee traffic sampled but not flushed
-before an abrupt crash; only flushed, persisted pending batches are protected.
+A successful HTTP acknowledgement clears the local pending spool. For native TXBoard this is **HTTP 202 / queued**, not proof of database settlement. TXBoard must process the queue and deduplicate traffic using the stable batch identity; verify the queue and billing ledger before declaring an end-to-end no-loss/no-double-charge result. The database may use legacy or native table names according to TXBoard's configured schema cutover: **TX-Node must never hard-code database table names**.
 
-The matching TXBoard backend requires the `v2_traffic_batch` migration
-from TXBoard PR #78. Deploy TXBoard before enabling upgraded TX-Node.
+Startup fails closed if the spool is corrupt, unreadable or cannot be written. Spool files have owner-only permissions. Do not run two active agents with the same node identity and the same state directory.
+
+Limitations: bytes tracked in memory but not yet flushed to a durable batch may be lost in an abrupt crash. A panel that acknowledges queuing and later fails permanently to settle a batch also requires operator-side queue recovery and reconciliation. Pending-batch replay alone cannot resolve those cases.
+
+Regression acceptance includes: retries after timeout, repeated IDs with identical payloads, rejecting mismatched duplicate payloads, successful reboot/recreation with the data mount, queue failure recovery, and user/server statistics reconciliation. See [Installer's durable data guidance](https://github.com/ANRCM0/TX-Node-Installer#durable-runtime-data-s8).

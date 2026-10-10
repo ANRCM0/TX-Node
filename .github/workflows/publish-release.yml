@@ -1,7 +1,8 @@
 name: Publish semantic release
 
-# Formal releases require an explicit operator action. Editing VERSION/NOTES alone
-# must never push a tag or overwrite :latest.
+# Stable-only release helper: creates vMAJOR.MINOR.PATCH tag on main, then
+# dispatches tagged CI to publish :vX.Y.Z and :latest. No preview/RC channel.
+# A direct stable tag push also invokes CI; editing VERSION/NOTES alone does not.
 on:
   workflow_dispatch:
 
@@ -34,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="$(tr -d '[:space:]' < .github/release/VERSION)"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid release version: $TAG" >&2
             exit 1
           fi

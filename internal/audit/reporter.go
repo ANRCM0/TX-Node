@@ -1,9 +1,10 @@
 // Package audit implements the tx-node embedded access-audit reporter.
 //
 // The optional reporter observes sing-box kernel connections, matches targets
-// against panel-provided AccessAudit rules, and reports matched events using
-// the existing node authentication (server token + node_id or machine token).
-// It does not introduce a separate credential or control-plane dependency.
+// against legacy Xboard-compatible AccessAudit plugin rules, and reports
+// matched events using the Xboard node authentication (server token + node_id
+// or machine token). Native TXBoard does not support this legacy plugin API.
+// The reporter does not introduce a separate credential.
 //
 // Disabled by default: without an [audit] section in config.yml, the reporter
 // does not participate in request handling or traffic reporting.
@@ -73,9 +74,9 @@ type Config struct {
 	QueueCap int `yaml:"queue_cap"`
 }
 
-// PanelAuth carries the stock panel credentials so audit traffic is
-// authenticated exactly like stock node reports (Xboard ServerV2 middleware:
-// token + node_id, or machine_id + token + node_id).
+// PanelAuth carries Xboard-compatible panel identity for the optional legacy
+// audit plugin endpoints. Do not reuse this query/body authentication for the
+// native TXBoard node/v1 protocol.
 type PanelAuth struct {
 	BaseURL   string
 	Token     string

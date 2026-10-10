@@ -12,7 +12,7 @@ TX-Node 支持 `sing-box` / `xray-core` 双内核。安装、升级、回滚与�
 
 普通节点与 Machine Mode 均通过 `panel.provider` 选择远程控制平面；省略该字段或设置为 `xboard` 时使用现有 Xboard 兼容协议。`txboard` 启用 TXBoard 原生 `/txapi/node/v1` HTTP/WSS 协议（Node 与 Machine Mode）；原生 WebSocket 默认由 TXBoard 服务端关闭，不影响 HTTP 轮询。上线前仍需跨仓库真实环境联调。Standalone 模式使用本地控制平面。
 
-Provider 的构造错误处理、配置继承及 S8 原生协议审查清单见 [`docs/control-plane-providers.md`](docs/control-plane-providers.md)。
+Provider 的构造错误处理、配置继承及原生协议验收边界见 [`docs/control-plane-providers.md`](docs/control-plane-providers.md)。
 
 ## 安装与部署
 
@@ -39,11 +39,13 @@ TX-Node 运行时仓库与 TX-Node-Installer（**两者均公开**）的职责�
 - **TX-Node-Installer**：安装/升级/卸载、Docker Compose、`txnode` 运维命令、多面板 `instances:`、隔离实例、配置备份与回滚。
 - 运行时仓库不再维护 `deploy.sh` / `install.sh` 的副本，避免安装逻辑双轨演进。
 
-开发者需要直接运行二进制时，可使用：
+开发者需要直接运行二进制时，可以参照 [config.yml.example](config.yml.example) 复制并填写凭据：
 
 ```bash
 make build
-./tx-node -c ./config.yml.example
+cp config.yml.example config.yml
+# 编辑 config.yml 中的 panel.url、token 和 node_id
+./tx-node -c ./config.yml
 ```
 
 常用开发/发布命令：
@@ -57,96 +59,52 @@ make docker
 
 ## 镜像发布策略
 
-TX-Node 的 CI 分离了验证、测试镜像和正式发布，普通合并不会直接覆盖生产使用的 `latest`：
+TX-Node **只有开发版和稳定版两个发布渠道**，不再发布预览版、RC 或独立的 `:test` 镜像。
 
-- **合并/推送 `main`**：运行 Go 测试与稳定性测试；**不推送 Docker 镜像**。
-- **手动构建测试镜像**：到 [CI Actions](https://github.com/ANRCM0/TX-Node/actions/workflows/ci.yml) 选择 `main`，点击 **Run workflow**。成功后推送 `ghcr.io/anrcm0/tx-node:test` 和精确提交 SHA 标签，**不会修改 `latest`**。
-- **正式发布**：将经过验证的源码打上符合语义化版本的 `vX.Y.Z` 标签。tag CI 完成测试、双架构构建和镜像发布，推送 `ghcr.io/anrcm0/tx-node:vX.Y.Z` 与 `:latest`，并生成 GitHub Release。预发布标签（例如 `v2.3.0-rc.1`）不更新 `latest`。
-- **可选的版本发布向导**：[Publish semantic release](https://github.com/ANRCM0/TX-Node/actions/workflows/publish-release.yml) 只接受人工从 `main` 触发。使用前必须更新 `.github/release/VERSION` 与 `.github/release/NOTES.md` 到相同的新版本并清除过时资产说明。仅编辑这些文件不会自动发布。
-- 已安装的节点不会因为 GHCR 标签更新而自行升级；实际升级仍由 TX-Node-Installer 管理。
+| 渠道 | 自动触发条件 | GHCR 镜像 | GitHub Release |
+| --- | --- | --- | --- |
+| **开发版** | 每次 Push/合并到 `main`，且 Go 测试与运行时稳定性测试通过 | `ghcr.io/anrcm0/tx-node:dev` + 每提交独立的 `:<完整SHA>` | 不创建 |
+| **稳定版** | 推送严格匹配 `vX.Y.Z` 的 Git Tag，并通过全部测试 | `ghcr.io/anrcm0/tx-node:vX.Y.Z`、`:latest` + `:<完整SHA>` | 发布 Linux amd64/arm64 二进制与正式说明 |
 
-## 审计说明
+- Pull Request、`dev` / `master` 分支普通 Push 只运行验证，不发布镜像；`main` 的**每次提交**都有独立的 SHA 构建，旧提交的慢速任务不会把 `:dev` 回退成旧版本。
+- `:dev` 指向当前成功构建且仍是 `main` 最新提交的镜像；若最新提交正在构建或构建失败，`:dev` 仍指向上一次成功发布的开发镜像。
+- 稳定版只接受 `v<主版本>.<次版本>.<补丁版本>`（例如 `v2.3.0`）。包含连字符的预览/RC Tag 会被校验拒绝，绝不会更新 `:latest`。
+- 发布前先更新 `.github/release/VERSION` 与 `.github/release/NOTES.md`，确保内容和 Tag 完全一致。可直接将对应的稳定 Tag 推到 GitHub，或使用 [Publish semantic release](https://github.com/ANRCM0/TX-Node/actions/workflows/publish-release.yml) 从 `main` 创建该 Tag 并调度 Tag CI。
+- 开发版不应部署到生产环境。安装器默认使用稳定渠道 `:latest`；更新 GHCR 标签不会自动更新正在运行的容器，实际升级需由 [TX-Node-Installer](https://github.com/ANRCM0/TX-Node-Installer) 执行。
+- **发布不等于上线验收**：首次启用原生 TXBoard 模式前，仍需验证 Machine / Node 联调、WS、双内核及异步流量队列结算与持久化重放。
 
-| 项 | 行为 |
-|---|---|
-| 启用方式 | config.yml 加 `audit: enabled: true`（**必须挂配置文件**，纯环境变量模式无法开启审计） |
-| 认证 | 复用 `panel.url` / `token` / `node_id`（与原版节点上报同一套 ServerV2 认证，零额外密钥） |
-| 数据流 | 连接路由时提取（user_id, 目标域名/IP, 来源 IP）→ 节点本地按面板下发的规则预过滤 → 只上报命中项 |
-| 批量 | 攒批 50 条 / 15 秒上报一次；一次 tick 内连续发送直到队列清空（上限 10 批），面板不可达时本地排队（上限 5000 条），恢复后自动补报 |
-| 内核范围 | **仅 sing-box**。xray 内核请用 AccessAudit 插件自带的旁路 `audit-agent.py`（tail access log） |
-| 目标提取 | sniff 域名 > 代理协议自带域名 > 目标 IP（代理协议自带域名，绝大多数场景不依赖 sniff） |
+## 访问审计（可选、兼容性功能）
 
-可调参数（都有默认值）：
+TX-Node 保留 `sing-box` 的嵌入式访问审计 reporter，但它不是原生 TXBoard 节点协议的一部分；默认关闭，且不参与正常用户、配置、流量计费与节点状态同步。
+
+| 部署模式 | 访问审计支持情况 |
+| --- | --- |
+| Xboard 兼容 Provider (`panel.provider: xboard`) | 保留旧版可选 reporter，要求面板**实际提供并启用**兼容 `/api/v1/plugin/access-audit/rules` 与 `/report` 的插件接口 |
+| TXBoard 原生 Provider (`panel.provider: txboard`) | **当前不支持旧审计上报**；保持 `audit.enabled: false` |
+| Xray / Standalone | 无内置的同等审计能力；不要把嵌入式 sing-box reporter 视为通用功能 |
+
+当前 TXBoard `main` **没有** `integrations/AccessAudit` 目录，且原生 `/txapi/node/v1` 未定义旧插件审计接口。因此不再提供原先的失效源码链接，也不将该插件作为 TXBoard 的内置能力宣传。历史兼容插件的来源、安装方式和接口可用性须由实际部署独立验证。
+
+仅在已验证的 Xboard 兼容部署中，可显式选择：
 
 ```yaml
+panel:
+  provider: xboard
+  url: "https://xboard.example.com"
+  token: "REPLACE_WITH_SERVER_TOKEN"
+  node_id: 1
 audit:
   enabled: true
-  report_all: false    # true = 上报全部连接（含未命中），面板留存全量访问日志
-  batch_max: 50        # 每次上报最多事件数（report_all 默认 200；面板单批上限 500）
-  flush_interval: 15   # 上报间隔（秒）
-  rules_refresh: 5     # 规则拉取间隔（分钟）
-  queue_cap: 5000      # 面板不可达时的本地队列上限（report_all 默认 50000）
+  report_all: false
+  batch_max: 50
+  flush_interval: 15
+  rules_refresh: 5
+  queue_cap: 5000
 ```
 
-> `batch_max` 上限为 **500**（面板上报接口 `MAX_EVENTS` 限制），超过会被 422 拒绝整批。
+`report_all: false` 只上报命中规则的连接；如果面板没有下发启用规则，则不会产生审计上报。`report_all: true` 会显著增加事件量；本地队列受容量限制，拥塞时可能丢弃审计事件。**审计日志不作为流量计费依据**。
 
-### ⚠️ 最常见的坑：开了 `enabled` 却一条数据都没有
-
-**`report_all: false` 时，唯一能上报的只有「命中规则」的连接。如果面板上一条启用规则都没有，节点会丢弃每一个连接，一条数据都不上报** —— 而配置和启动日志看起来一切正常。
-
-原因：节点在本地按面板下发的规则预过滤（省面板流量），规则集为空 → `match()` 恒为 false → 全部丢弃。
-
-所以只有两种有效组合：
-
-| 目标 | 配置 |
-|---|---|
-| 只要**违规命中**记录（量小） | `report_all: false` **且面板上至少配一条启用规则** |
-| 要**全量访问日志**（面板能看到所有连接） | `report_all: true`（无需配置规则，规则仅用于标记哪条算命中） |
-
-节点启动时会打印一条 WARN 提醒这个状态；规则拉取到空集且 `report_all=false` 时也会再告警一次（每分钟最多一条）：
-
-```
-WARN [core] audit: report_all=false — only rule-matched targets are reported;
-           with no enabled rules NOTHING will be sent. ...
-```
-
-看到这条日志就说明当前配置不会产生任何上报。
-
-### 负载与容量边界（重要）
-
-**单个节点对面板的压力上界是确定的**，可以按下面的公式估算后再决定是否开启 `report_all`：
-
-```
-节点发送速率上限 = batch_max × 10 批 / flush_interval(秒)   [条/秒]
-```
-
-默认值下：`50 × 10 / 15 ≈ 33 条/秒`；`report_all` 默认值下：`200 × 10 / 15 ≈ 133 条/秒`。
-
-面板侧每条上报的 SQL 次数（无论批内多少条）为固定开销 + `ceil(N/200)` 次批量插入，**不再随事件数线性放大**。但事件**产生**速率是随在线用户数线性增长的：
-
-| 规模 | 事件产生速率（估算） | report_all 默认配置是否跟得上 |
-|---|---|---|
-| 1000 在线用户，人均 3 并发，连接均值 300s | ≈ 10 条/秒 | 跟得上 |
-| 5000 在线用户，同假设 | ≈ 50 条/秒 | 跟得上（接近上限） |
-| 20000 在线用户，同假设 | ≈ 200 条/秒 | **跟不上**，队列会持续堆积并最终丢弃 |
-
-队列满或补报失败溢出时，**事件会被丢弃并记录 `dropped` 计数与限流告警**（每分钟最多一条 WARN），不会静默丢失。
-
-**建议**：
-- 只要「命中项上报」（默认模式）时，事件量极小，任何规模都无需调整。
-- 需要**全量访问日志**（`report_all`）且在线用户数超过 ~5000 时，请同时调大 `batch_max`（如 500）与 `flush_interval`，或在面板侧接受日志采样；单节点无法保证不丢时，日志仅适合做抽样审计，不适合做计费依据。
-
-## 配套面板插件（AccessAudit）
-
-AccessAudit 是**可选的面板插件**，其唯一源码位于 TXBoard：
-
-- 插件源码：[ANRCM0/TXBoard → integrations/AccessAudit](https://github.com/ANRCM0/TXBoard/tree/main/integrations/AccessAudit)
-- TX-Node 只保留可选的审计 reporter/client，用于拉取规则和上报事件。
-- TX-Node 不再 vendor、构建或随 Release 打包面板插件。
-- 面板未安装/启用 AccessAudit 时，请保持 `audit.enabled: false`；核心节点、流量与状态上报不受影响。
-- xray 兼容所需的旁路 `audit-agent.py` 作为插件资产由 TXBoard 的 AccessAudit 插件维护。
-
-这样插件生命周期属于控制平面，TX-Node 的发布生命周期只负责 Agent/runtime。
+相关实现：[审计 reporter](internal/audit/reporter.go)、[ControlPlane 审计能力接口](internal/controlplane/capabilities.go)。原生 TXBoard 访问审计如需支持，必须先单独定义其 API、鉴权和行为契约，不应直接复用旧 Query Token 机制。
 
 ## Xboard 兼容与项目来源
 

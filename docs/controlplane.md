@@ -17,7 +17,7 @@ The core service consumes only the `ControlPlane` contract (`Source` + `Sink`) a
                               +----------+----------+
                               |                     |
                      XboardControlPlane      TXBoardControlPlane
-                                                  (TuneX, ...)
+                                               (future adapters separately)
 ```
 
 Protocol-specific JSON, authentication fields, REST paths and websocket event formats must be translated inside their adapter before data reaches service or kernel code.
@@ -69,7 +69,7 @@ Service / Kernel
 
 This prevents a new typed operation from automatically gaining access to unrelated Service state. The protocol contract is unchanged.
 
-See [Runtime Boundary](./runtime-boundary.md) for the feature gate and simplification roadmap.
+See [Runtime Boundary](./runtime-boundary.md) for current runtime ownership and the feature-admission rules; consult [compatibility inventory](./legacy-compatibility-inventory.md) before removing migration paths.
 
 ## Optional capabilities
 
@@ -77,23 +77,23 @@ Protocol-specific extensions that are not universal control-plane operations mus
 
 The first capability is `AuditTargetProvider`. Xboard adapters implement it to expose the remote identity required by the embedded access-audit reporter; `LocalControlPlane` intentionally does not. The service resolves the capability through `controlplane.AuditTargetOf` and therefore never reads Xboard panel credentials directly.
 
-Future adapters may implement the same capability if their backend supports the audit API, or omit it without changing core service behavior. New protocol-specific features should follow the same pattern when they do not belong in the base `ControlPlane` contract.
+The TXBoard native adapter currently omits the legacy audit capability: its API does not implement Xboard plugin audit routes. Keep `audit.enabled: false` in native deployments. Future adapters may implement audit only after defining their own supported audit API and authentication. New protocol-specific features should follow the same pattern when they do not belong in the base `ControlPlane` contract.
 
-## Adding TuneX later
+## Extending with another control plane
 
-A future TuneX protocol should be implemented as a new adapter, not by adding TuneX-specific branches throughout service/kernel code. The intended path is:
+Additional panel protocols should be implemented as independent adapters, not by adding panel-specific branches throughout Service or kernel code. The intended path is:
 
 ```text
-TuneX API / WS
+New panel API / WS
       |
-TuneXControlPlane
+NewPanelControlPlane
       |
 TX NodeSpec / UserSpec / Event / ReportPayload
       |
 TX-Node service
 ```
 
-Before enabling a TuneX provider, define its authentication, bootstrap, configuration/user synchronization, reporting and push-event semantics, then add provider selection in the control-plane factory/config layer. TuneX-specific extensions should be exposed through optional capability interfaces where possible.
+Before enabling another provider, define its authentication, bootstrap, configuration/user synchronization, reporting and push-event semantics, then add provider selection in the ControlPlane factory/config layer. Provider-specific extensions should use optional capability interfaces where possible.
 
 ## Compatibility principle
 
