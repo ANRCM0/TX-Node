@@ -14,7 +14,7 @@ kernel:
 log:
   level: info
 audit:
-  enabled: false  # TXBoard native 暂不支持旧 AccessAudit reporter
+  enabled: false  # 可选访问审计（TXBoard 原生 API 或 Xboard 旧插件）；默认关闭
 
 # 方案 B：TXBoard 原生 Machine（替换上面的 panel，并增加 machine；删除 panel.token/node_id）
 # panel:
@@ -55,8 +55,8 @@ audit:
 #       machine_id: 6
 #       token: "REPLACE_WITH_TXBOARD_MACHINE_TOKEN"
 
-# 可选嵌入式访问审计（仅旧 Xboard 兼容插件接口；需要单独部署兼容面板插件）。
-# 不要在 TXBoard 原生模式开启；当前 TXBoard main 未提供该旧插件路径。
+# 可选嵌入式访问审计：需 sing-box；Xboard 使用已安装的旧插件，TXBoard 使用原生 TXAPI。
+# 两者共用采集与规则匹配；仅在确认面板端已更新并做好隐私策略后开启。
 # audit:
 #   enabled: true
 #   report_all: false   # false 只上报命中规则的事件，空规则集不产生上报

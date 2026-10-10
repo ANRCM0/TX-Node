@@ -58,6 +58,7 @@ func (c *Client) Metrics() (uint64,uint64) { return c.success.Load(), c.failure.
 func (c *Client) NodeID() int { return c.nodeID }
 func (c *Client) MachineID() int { return c.machineID }
 func (c *Client) Token() string { return c.token }
+func (c *Client) BaseURL() string { return c.baseURL }
 
 // WSSURL accepts only the versioned route advertised by native handshake.
 func (c *Client) WSSURL(path string) (string,error) {

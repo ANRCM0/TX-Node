@@ -82,6 +82,7 @@ func (c *Coordinator) Attach(
 		RulesRefresh:  cfg.RulesRefresh,
 		QueueCap:      cfg.QueueCap,
 	}, audit.PanelAuth{
+		Protocol:  target.Protocol,
 		BaseURL:   target.BaseURL,
 		Token:     target.Token,
 		NodeID:    target.NodeID,
