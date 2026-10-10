@@ -34,7 +34,7 @@ type nodeHandle struct {
 //   - reports machine-level load via POST /machine/status
 type Orchestrator struct {
 	cfg    *config.Config
-	client *panel.Client // machine-level client (no node_id)
+	client machineControlPlane // machine transport boundary
 
 	mu    sync.Mutex
 	nodes map[int]*nodeHandle // node_id → handle
@@ -124,7 +124,7 @@ func New(cfg *config.Config) *Orchestrator {
 	}
 	return &Orchestrator{
 		cfg:       cfg,
-		client:    panel.NewClient(panelCfg),
+		client:    newXboardMachineControlPlane(panel.NewClient(panelCfg)),
 		nodes:     make(map[int]*nodeHandle),
 		mailboxes: make(map[int]*controlplane.NodeMailbox),
 		statuses:  make(map[int]chan<- controlplane.StatusChange),

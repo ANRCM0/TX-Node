@@ -24,7 +24,7 @@ import (
 func newTestOrchestrator() *Orchestrator {
 	return &Orchestrator{
 		cfg:       &config.Config{InstanceID: "test-instance", Machine: &config.MachineConfig{MachineID: 16}},
-		client:    panel.NewClient(config.PanelConfig{URL: "http://127.0.0.1:1", Token: "t", MachineID: 16}),
+		client:    newXboardMachineControlPlane(panel.NewClient(config.PanelConfig{URL: "http://127.0.0.1:1", Token: "t", MachineID: 16})),
 		nodes:     make(map[int]*nodeHandle),
 		mailboxes: make(map[int]*controlplane.NodeMailbox),
 		statuses:  make(map[int]chan<- controlplane.StatusChange),
@@ -281,7 +281,7 @@ func TestMachineWSDiscoveryRecoversAfterInitialHandshakeFailure(t *testing.T) {
 	defer server.Close()
 
 	o := newTestOrchestrator()
-	o.client = panel.NewClient(config.PanelConfig{URL: server.URL, Token: "t", MachineID: 16})
+	o.client = newXboardMachineControlPlane(panel.NewClient(config.PanelConfig{URL: server.URL, Token: "t", MachineID: 16}))
 	push := &machineNodePush{nodeID: 3, wsLookup: o.currentWS}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
