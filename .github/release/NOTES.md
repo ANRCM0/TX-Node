@@ -24,4 +24,4 @@ TX-Node v2.3.0 是下一次拟发布的运行时版本，聚焦原生 TXBoard �
 - `tx-node-linux-amd64`
 - `tx-node-linux-arm64`
 
-Docker 多架构镜像发布到 `ghcr.io/anrcm0/tx-node`。稳定版 Tag `v2.3.0` 成功构建后，才会推送 `:v2.3.0` 和 `:latest`；手动测试版 `:test` 不会覆盖生产标签。正式版本发布需要单独的人工触发。
+Docker 多架构镜像发布到 `ghcr.io/anrcm0/tx-node`。每次 `main` 提交通过 CI 后自动生成开发镜像 `:dev` 和不可变提交 SHA 标签；严格的稳定版 Tag `v2.3.0` 才会推送 `:v2.3.0` 和 `:latest`，并生成 GitHub Release。没有预览版/RC 渠道；当前准备的发布说明不会自行打 Tag。
