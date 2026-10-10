@@ -481,27 +481,14 @@ func (o *Orchestrator) tryStartWS(ctx context.Context) {
 		nlog.Core().Warn("machine ws handshake failed, REST only", "error", err)
 		return
 	}
-	if !hs.WebSocket.Enabled || hs.WebSocket.WSURL == "" {
+	if !hs.Enabled || hs.URL == "" {
 		nlog.Core().Info("machine: ws disabled by panel, REST only")
 		return
 	}
 
-	wsCfg := panel.WSClientConfig{
-		StatusInterval:   time.Duration(o.cfg.WS.StatusInterval) * time.Second,
-		HandshakeTimeout: time.Duration(o.cfg.WS.HandshakeTimeout) * time.Second,
-		BackoffInitial:   time.Duration(o.cfg.WS.BackoffInitial) * time.Second,
-		BackoffMax:       time.Duration(o.cfg.WS.BackoffMax) * time.Second,
-		MachineID:        o.cfg.Machine.MachineID,
-	}
-
-	ws := newXboardMachineSocket(
-		hs.WebSocket.WSURL,
-		o.cfg.Machine.Token,
-		0, // no single node_id
-		wsCfg,
-		o.onWSEvent,
-		o.onWSStatus,
-		nil, // per-node status is sent via machineNodePush
+	ws := o.client.NewMachineSocket(
+		hs.URL, o.cfg.Machine.Token, o.cfg.Machine.MachineID,
+		o.cfg.WS, o.cfg.Kernel, o.onMachineEvent, o.onMachineStatus,
 	)
 
 	o.wsMu.Lock()
@@ -589,7 +576,11 @@ func (o *Orchestrator) onMachineEvent(event machineEvent) {
 
 // onWSStatus broadcasts WS connectivity changes to all registered nodes.
 func (o *Orchestrator) onWSStatus(status panel.WSStatusChange) {
-	change := controlplane.StatusChange{Connected: status.Connected}
+ o.onMachineStatus(status.Connected)
+}
+
+func (o *Orchestrator) onMachineStatus(connected bool) {
+	change := controlplane.StatusChange{Connected: connected}
 	o.eventsMu.RLock()
 	defer o.eventsMu.RUnlock()
 	for _, ch := range o.statuses {

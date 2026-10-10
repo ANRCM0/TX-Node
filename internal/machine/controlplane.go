@@ -3,11 +3,13 @@ package machine
 import (
  "context"
  "encoding/json"
+ "time"
  "github.com/ANRCM0/TX-Node/internal/panel"
  "github.com/ANRCM0/TX-Node/internal/config"
  "github.com/ANRCM0/TX-Node/internal/controlplane"
 )
 
+type machineHandshake struct { Enabled bool; URL string }
 type machineNode struct { ID int; Type string; Name string }
 type machineIntervals struct { PullInterval int; PushInterval int }
 type machineDiscovery struct { Nodes []machineNode; BaseConfig machineIntervals }
@@ -16,7 +18,8 @@ type machineDiscovery struct { Nodes []machineNode; BaseConfig machineIntervals 
 // The Xboard adapter preserves the existing wire format during migration.
 type machineControlPlane interface {
  GetMachineNodes() (*machineDiscovery, error)
- Handshake() (*panel.HandshakeResponse, error)
+ Handshake() (*machineHandshake, error)
+ NewMachineSocket(string, string, int, config.WSConfig, config.KernelConfig, func(machineEvent), func(bool)) machineSocket
  ForNode(int) machineNodeClient
  ReportMachineStatus(float64, [2]uint64, [2]uint64, [2]uint64, float64, float64, *panel.MachineRuntimeStatus) error
 }
@@ -48,7 +51,23 @@ func (x *xboardMachineControlPlane) GetMachineNodes() (*machineDiscovery, error)
  for _, n := range response.Nodes { result.Nodes = append(result.Nodes, machineNode{ID: n.ID, Type: n.Type, Name: n.Name}) }
  return result, nil
 }
-func (x *xboardMachineControlPlane) Handshake() (*panel.HandshakeResponse, error) { return x.client.Handshake() }
+func (x *xboardMachineControlPlane) Handshake() (*machineHandshake, error) {
+ hs, err := x.client.Handshake()
+ if err != nil { return nil, err }
+ return &machineHandshake{Enabled: hs.WebSocket.Enabled, URL: hs.WebSocket.WSURL}, nil
+}
+func (x *xboardMachineControlPlane) NewMachineSocket(url, token string, machineID int, ws config.WSConfig, kernel config.KernelConfig, onEvent func(machineEvent), onStatus func(bool)) machineSocket {
+ cfg := panel.WSClientConfig{
+  StatusInterval: time.Duration(ws.StatusInterval)*time.Second,
+  HandshakeTimeout: time.Duration(ws.HandshakeTimeout)*time.Second,
+  BackoffInitial: time.Duration(ws.BackoffInitial)*time.Second,
+  BackoffMax: time.Duration(ws.BackoffMax)*time.Second,
+  MachineID: machineID,
+ }
+ return newXboardMachineSocket(url, token, 0, cfg,
+  func(raw panel.WSEvent) { onEvent(translateMachineEvent(raw, kernel)) },
+  func(status panel.WSStatusChange) { onStatus(status.Connected) }, nil)
+}
 func (x *xboardMachineControlPlane) ForNode(id int) machineNodeClient { return &xboardMachineNodeClient{client: x.client.ForNode(id)} }
 func (x *xboardMachineControlPlane) ReportMachineStatus(cpu float64, mem, swap, disk [2]uint64, netIn, netOut float64, status *panel.MachineRuntimeStatus) error {
  return x.client.ReportMachineStatus(cpu, mem, swap, disk, netIn, netOut, status)
