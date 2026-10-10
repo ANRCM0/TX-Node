@@ -221,13 +221,13 @@ func TestMachineRuntimeUpdateDelegatesToInstallerBridge(t *testing.T) {
 
 	o := newTestOrchestrator()
 	o.runtimeUpdater = runtimeupdate.New(dir)
-	o.onWSEvent(panel.WSEvent{
+	o.onMachineEvent(translateMachineEvent(panel.WSEvent{
 		Type: panel.WSEventOpsMachineRuntimeUpdate,
 		MachineRuntimeUpdate: &panel.MachineRuntimeUpdateRequest{
 			RequestID: "mup_test-01",
 			Target:    "latest",
 		},
-	})
+	}, config.KernelConfig{}))
 
 	body, err := os.ReadFile(filepath.Join(dir, "request.env"))
 	if err != nil {
@@ -251,13 +251,13 @@ func TestMachineRuntimeUpdateRejectsUnsupportedTarget(t *testing.T) {
 
 	o := newTestOrchestrator()
 	o.runtimeUpdater = runtimeupdate.New(dir)
-	o.onWSEvent(panel.WSEvent{
+	o.onMachineEvent(translateMachineEvent(panel.WSEvent{
 		Type: panel.WSEventOpsMachineRuntimeUpdate,
 		MachineRuntimeUpdate: &panel.MachineRuntimeUpdateRequest{
 			RequestID: "mup_test-02",
 			Target:    "ghcr.io/example/other:latest",
 		},
-	})
+	}, config.KernelConfig{}))
 
 	if _, err := os.Stat(filepath.Join(dir, "request.env")); !os.IsNotExist(err) {
 		t.Fatalf("unsafe target created request file: err=%v", err)
