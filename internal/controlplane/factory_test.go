@@ -10,6 +10,12 @@ func TestProviderForConfig(t *testing.T) {
 	if got := ProviderForConfig(&config.Config{}); got != ProviderXboard {
 		t.Fatalf("default provider = %q, want %q", got, ProviderXboard)
 	}
+	if got := ProviderForConfig(&config.Config{Panel: config.PanelConfig{Provider: "xboard"}}); got != ProviderXboard {
+		t.Fatalf("explicit xboard provider = %q, want %q", got, ProviderXboard)
+	}
+	if got := ProviderForConfig(&config.Config{Panel: config.PanelConfig{Provider: "txboard"}}); got != ProviderTXBoard {
+		t.Fatalf("txboard provider = %q, want %q", got, ProviderTXBoard)
+	}
 	if got := ProviderForConfig(&config.Config{Standalone: &config.StandaloneConfig{Enabled: true}}); got != ProviderLocal {
 		t.Fatalf("standalone provider = %q, want %q", got, ProviderLocal)
 	}

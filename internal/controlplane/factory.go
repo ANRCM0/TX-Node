@@ -8,7 +8,14 @@ type Provider string
 const (
 	ProviderLocal  Provider = "local"
 	ProviderXboard Provider = "xboard"
+	ProviderTXBoard Provider = "txboard" // reserved until the native adapter exists
 )
+
+// normalized retains compatibility with existing configurations that omit provider.
+func (p Provider) normalized() Provider {
+	if p == "" { return ProviderXboard }
+	return p
+}
 
 // ProviderForConfig reports the control-plane provider selected by the current
 // configuration. Xboard compatibility is the default remote provider; local
@@ -17,7 +24,7 @@ func ProviderForConfig(cfg *config.Config) Provider {
 	if cfg.IsStandalone() {
 		return ProviderLocal
 	}
-	return ProviderXboard
+	return Provider(cfg.Panel.Provider).normalized()
 }
 
 // NewForConfig constructs the default control plane for a node configuration.
@@ -28,7 +35,11 @@ func NewForConfig(cfg *config.Config) ControlPlane {
 	switch ProviderForConfig(cfg) {
 	case ProviderLocal:
 		return NewLocalControlPlane(cfg)
-	default:
+	case ProviderXboard:
 		return NewXboardControlPlane(cfg.Panel, cfg.WS, cfg.Kernel)
+	default:
+		// Unsupported providers are rejected during config validation. Never
+		// silently connect a different provider using Xboard credentials.
+		panic("unsupported control-plane provider: " + string(ProviderForConfig(cfg)))
 	}
 }
