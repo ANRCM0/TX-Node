@@ -3,7 +3,7 @@
 TX-Node uses `panel.provider` for remote protocol selection in both node mode and machine mode.
 
 - Omitted or `xboard`: existing Xboard-compatible protocol (default).
-- `txboard`: reserved for the future native adapter; config validation currently rejects it.
+- `txboard`: TXBoard native node/v1 adapter (Bearer + identity headers, versioned HTTP/WSS).
 - Standalone mode: always selects the local control plane.
 
 ```yaml
@@ -14,12 +14,12 @@ panel:
   node_id: 1
 ```
 
-Provider selection does not imply TXBoard wire protocol support. Native TXBoard integration will require its own client, DTO mappings, and protocol contract tests.
+TXBoard native transport uses /txapi/node/v1 and does not send Xboard-style query/body credentials. Node/machine DTOs are normalized before reaching Service.
 
 ## S7 implementation and S8 handoff
 
-Node mode and machine mode both select their remote provider from `panel.provider`. Unsupported values fail closed; `txboard` is reserved, not implemented. The checked constructors (`controlplane.NewForConfigChecked`, `service.NewChecked`, and `machine.NewChecked`) return errors to the startup path instead of panicking. Existing convenience constructors remain for legacy callers; new code should prefer checked constructors.
+Node mode and machine mode both select their remote provider from `panel.provider`. Unsupported values fail closed; both `xboard` and `txboard` are implemented. The checked constructors (`controlplane.NewForConfigChecked`, `service.NewChecked`, and `machine.NewChecked`) return errors to the startup path instead of panicking. Existing convenience constructors remain for legacy callers; new code should prefer checked constructors.
 
 Multi-instance configuration inherits `panel.provider` from the parent when omitted and preserves explicit child values. Standalone selects the local control plane independently of remote provider selection, subject to configuration validation.
 
-Before enabling native TXBoard support, inspect the actual TXBoard node and machine models, REST authentication and endpoints, WebSocket event contract, state and traffic reporting, and the mapping to TX-Node internal DTOs. Add protocol contract tests for both node and machine modes. Do not assume TXBoard uses Xboard wire formats.
+Native TXBoard v1 requires server-side `/txapi/node/v1` endpoints, the corresponding Bearer/ID identity, and optional Workerman WSS. HTTP 202 on usage report acknowledges queue acceptance only; SQL settlement must be verified in TXBoard. Test real kernel connectivity, queue failures, WSS upgrades and token rotation before a production rollout.
