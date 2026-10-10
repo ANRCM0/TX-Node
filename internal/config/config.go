@@ -39,13 +39,16 @@ type Config struct {
 
 	// Machine enables machine mode: a single process manages all nodes
 	// bound to this machine on the panel. Nodes are discovered dynamically
-	// via GET /api/v2/server/machine/nodes. When set, Panel.NodeID, Nodes
+	// via the provider-selected discovery endpoint (TXBoard native:
+	// GET /txapi/node/v1/machine/nodes; Xboard compatibility:
+	// POST /api/v2/server/machine/nodes). When set, Panel.NodeID, Nodes
 	// and Panel.Token are ignored; the machine token is used instead.
 	Machine *MachineConfig `yaml:"machine,omitempty"`
 
-	// Audit (tx-node extension) enables the embedded access-audit reporter
-	// for the sing-box kernel. Reports reuse the panel credentials above —
-	// no separate token is needed. Omit to disable.
+	// Audit (optional) uses the old Xboard-compatible plugin API, when the
+	// Xboard adapter exposes AuditTarget and the panel supports those routes.
+	// TXBoard native does not currently implement this capability. Keep disabled
+	// for native TXBoard; omit this section to disable the reporter.
 	Audit AuditConfig `yaml:"audit,omitempty"`
 }
 
