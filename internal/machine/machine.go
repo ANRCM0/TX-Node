@@ -34,7 +34,7 @@ type nodeHandle struct {
 //   - reports machine-level load via POST /machine/status
 type Orchestrator struct {
 	cfg    *config.Config
-	client *panel.Client // machine-level client (no node_id)
+	client machineControlPlane // machine transport boundary
 
 	mu    sync.Mutex
 	nodes map[int]*nodeHandle // node_id → handle
@@ -48,7 +48,7 @@ type Orchestrator struct {
 	// The shared transport may be installed after startup when the initial
 	// handshake fails or the panel enables WS later. Node pushes look it up live.
 	wsMu     sync.RWMutex
-	ws       *panel.WSClient
+	ws       machineSocket
 	wsCancel context.CancelFunc
 
 	// Discovery may be triggered by both the ticker and an incoming WS event.
@@ -124,7 +124,7 @@ func New(cfg *config.Config) *Orchestrator {
 	}
 	return &Orchestrator{
 		cfg:       cfg,
-		client:    panel.NewClient(panelCfg),
+		client:    newXboardMachineControlPlane(panel.NewClient(panelCfg)),
 		nodes:     make(map[int]*nodeHandle),
 		mailboxes: make(map[int]*controlplane.NodeMailbox),
 		statuses:  make(map[int]chan<- controlplane.StatusChange),
@@ -185,7 +185,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 
 // ─── Node lifecycle ──────────────────────────────────────────────────────
 
-func (o *Orchestrator) startNode(ctx context.Context, mn panel.MachineNode) {
+func (o *Orchestrator) startNode(ctx context.Context, mn machineNode) {
 	o.mu.Lock()
 	if _, exists := o.nodes[mn.ID]; exists {
 		o.mu.Unlock()
@@ -238,7 +238,7 @@ func (o *Orchestrator) startNode(ctx context.Context, mn panel.MachineNode) {
 		return mb
 	}
 
-	cp := controlplane.NewMachineXboardControlPlane(perNodeClient, nodeCfg.Kernel, push, registerFn)
+	cp := perNodeClient.ControlPlane(nodeCfg.Kernel, push, registerFn)
 	svc := service.NewWithControlPlane(nodeCfg, cp)
 
 	nlog.Core().Info(fmt.Sprintf("machine: starting node %d (%s/%s)",
@@ -387,7 +387,7 @@ func (o *Orchestrator) rediscover(ctx context.Context) {
 
 	o.setWanted(len(nodesResp.Nodes))
 
-	wanted := make(map[int]panel.MachineNode, len(nodesResp.Nodes))
+	wanted := make(map[int]machineNode, len(nodesResp.Nodes))
 	for _, n := range nodesResp.Nodes {
 		wanted[n.ID] = n
 	}
@@ -466,7 +466,7 @@ func (o *Orchestrator) reportMachineStatus() {
 
 // ─── WS mux ─────────────────────────────────────────────────────────────
 
-func (o *Orchestrator) currentWS() *panel.WSClient {
+func (o *Orchestrator) currentWS() machineSocket {
 	o.wsMu.RLock()
 	defer o.wsMu.RUnlock()
 	return o.ws
@@ -481,27 +481,14 @@ func (o *Orchestrator) tryStartWS(ctx context.Context) {
 		nlog.Core().Warn("machine ws handshake failed, REST only", "error", err)
 		return
 	}
-	if !hs.WebSocket.Enabled || hs.WebSocket.WSURL == "" {
+	if !hs.Enabled || hs.URL == "" {
 		nlog.Core().Info("machine: ws disabled by panel, REST only")
 		return
 	}
 
-	wsCfg := panel.WSClientConfig{
-		StatusInterval:   time.Duration(o.cfg.WS.StatusInterval) * time.Second,
-		HandshakeTimeout: time.Duration(o.cfg.WS.HandshakeTimeout) * time.Second,
-		BackoffInitial:   time.Duration(o.cfg.WS.BackoffInitial) * time.Second,
-		BackoffMax:       time.Duration(o.cfg.WS.BackoffMax) * time.Second,
-		MachineID:        o.cfg.Machine.MachineID,
-	}
-
-	ws := panel.NewWSClient(
-		hs.WebSocket.WSURL,
-		o.cfg.Machine.Token,
-		0, // no single node_id
-		wsCfg,
-		o.onWSEvent,
-		o.onWSStatus,
-		nil, // per-node status is sent via machineNodePush
+	ws := o.client.NewMachineSocket(
+		hs.URL, o.cfg.Machine.Token, o.cfg.Machine.MachineID,
+		o.cfg.WS, o.cfg.Kernel, o.onMachineEvent, o.onMachineStatus,
 	)
 
 	o.wsMu.Lock()
@@ -517,8 +504,12 @@ func (o *Orchestrator) tryStartWS(ctx context.Context) {
 // onWSEvent routes a WS event to the correct node's channel.
 // sync.nodes is a machine-level event that triggers immediate rediscovery.
 func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
-	if event.Type == panel.WSEventOpsMachineRuntimeUpdate {
-		if event.MachineRuntimeUpdate == nil {
+ o.onMachineEvent(translateMachineEvent(event, o.cfg.Kernel))
+}
+
+func (o *Orchestrator) onMachineEvent(event machineEvent) {
+	if event.Kind == machineEventRuntimeUpdate {
+		if event.RuntimeUpdate == nil {
 			nlog.Core().Warn("machine runtime update missing typed payload")
 			return
 		}
@@ -527,24 +518,24 @@ func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
 			return
 		}
 		if err := o.runtimeUpdater.Request(
-			event.MachineRuntimeUpdate.RequestID,
-			event.MachineRuntimeUpdate.Target,
+			event.RuntimeUpdate.RequestID,
+			event.RuntimeUpdate.Target,
 		); err != nil {
 			nlog.Core().Warn("machine runtime update request rejected",
-				"request_id", event.MachineRuntimeUpdate.RequestID,
+				"request_id", event.RuntimeUpdate.RequestID,
 				"error", err,
 			)
 			return
 		}
 		nlog.Core().Info("machine runtime update accepted",
-			"request_id", event.MachineRuntimeUpdate.RequestID,
-			"target", event.MachineRuntimeUpdate.Target,
+			"request_id", event.RuntimeUpdate.RequestID,
+			"target", event.RuntimeUpdate.Target,
 		)
 		return
 	}
 
 	// sync.nodes is a machine-level event, not per-node
-	if event.Type == panel.WSEventSyncNodes {
+	if event.Kind == machineEventSyncNodes {
 		nlog.Core().Info("machine received sync.nodes, triggering immediate rediscovery")
 		go o.rediscover(o.runCtx)
 		return
@@ -552,14 +543,14 @@ func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
 
 	nodeID := event.NodeID
 	if nodeID == 0 {
-		nlog.Core().Debug("machine ws event missing node_id, dropping", "type", event.Type)
+		nlog.Core().Debug("machine ws event missing node_id, dropping", "type", event.Kind)
 		return
 	}
 
-	translated, err := controlplane.TranslateWSEvent(event, o.cfg.Kernel)
+	translated, err := event.NodeEvent, event.Err
 	if err != nil {
 		nlog.Core().Warn("machine ws event translation failed",
-			"type", event.Type, "node_id", nodeID, "error", err)
+			"type", event.Kind, "node_id", nodeID, "error", err)
 		return
 	}
 
@@ -567,7 +558,7 @@ func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
 	mailbox, ok := o.mailboxes[nodeID]
 	o.eventsMu.RUnlock()
 	if !ok {
-		nlog.Core().Debug("machine ws event for unknown node", "node_id", nodeID, "type", event.Type)
+		nlog.Core().Debug("machine ws event for unknown node", "node_id", nodeID, "type", event.Kind)
 		return
 	}
 	if !mailbox.Apply(translated) && translated.OpsRequest != nil {
@@ -585,7 +576,11 @@ func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
 
 // onWSStatus broadcasts WS connectivity changes to all registered nodes.
 func (o *Orchestrator) onWSStatus(status panel.WSStatusChange) {
-	change := controlplane.StatusChange{Connected: status.Connected}
+ o.onMachineStatus(status.Connected)
+}
+
+func (o *Orchestrator) onMachineStatus(connected bool) {
+	change := controlplane.StatusChange{Connected: connected}
 	o.eventsMu.RLock()
 	defer o.eventsMu.RUnlock()
 	for _, ch := range o.statuses {
@@ -621,7 +616,7 @@ func (o *Orchestrator) unregisterNode(nodeID int) {
 	o.eventsMu.Unlock()
 }
 
-func (o *Orchestrator) applyIntervals(bc panel.MachineBaseConfig) {
+func (o *Orchestrator) applyIntervals(bc machineIntervals) {
 	o.pullInterval = time.Duration(bc.PullInterval) * time.Second
 	if o.pullInterval < 30*time.Second {
 		o.pullInterval = 60 * time.Second
@@ -640,10 +635,10 @@ func (o *Orchestrator) applyIntervals(bc panel.MachineBaseConfig) {
 // connectivity status and send capabilities.
 type machineNodePush struct {
 	nodeID int
-	wsLookup func() *panel.WSClient
+	wsLookup func() machineSocket
 }
 
-func (p *machineNodePush) currentWS() *panel.WSClient {
+func (p *machineNodePush) currentWS() machineSocket {
 	if p.wsLookup == nil {
 		return nil
 	}
@@ -675,7 +670,7 @@ func (p *machineNodePush) SendDeviceReport(devices map[int][]string) {
 	}
 	payload["devices"] = strDevices
 	data, _ := json.Marshal(payload)
-	ws.SendRaw(panel.WSEventReportDevices, data)
+	ws.SendDeviceReport(data)
 }
 
 func (p *machineNodePush) SendOpsResult(result controlplane.OpsResult) {
@@ -703,5 +698,5 @@ func (p *machineNodePush) SendOpsResult(result controlplane.OpsResult) {
 		nlog.Core().Warn("machine: cannot encode ops result", "error", err)
 		return
 	}
-	ws.SendRaw(panel.WSEventOpsResult, data)
+	ws.SendOpsResult(data)
 }

@@ -1,6 +1,7 @@
 package machine
 
 import (
+ "encoding/json"
 	"context"
 	"errors"
 	"fmt"
@@ -24,7 +25,7 @@ import (
 func newTestOrchestrator() *Orchestrator {
 	return &Orchestrator{
 		cfg:       &config.Config{InstanceID: "test-instance", Machine: &config.MachineConfig{MachineID: 16}},
-		client:    panel.NewClient(config.PanelConfig{URL: "http://127.0.0.1:1", Token: "t", MachineID: 16}),
+		client:    newXboardMachineControlPlane(panel.NewClient(config.PanelConfig{URL: "http://127.0.0.1:1", Token: "t", MachineID: 16})),
 		nodes:     make(map[int]*nodeHandle),
 		mailboxes: make(map[int]*controlplane.NodeMailbox),
 		statuses:  make(map[int]chan<- controlplane.StatusChange),
@@ -137,7 +138,7 @@ func TestStartNodeSkipsDuringBackoff(t *testing.T) {
 	o := newTestOrchestrator()
 	o.failures[7] = &nodeFailure{count: 1, nextRetry: time.Now().Add(time.Minute)}
 
-	o.startNode(context.Background(), panel.MachineNode{ID: 7})
+	o.startNode(context.Background(), machineNode{ID: 7})
 
 	o.mu.Lock()
 	_, started := o.nodes[7]
@@ -281,7 +282,7 @@ func TestMachineWSDiscoveryRecoversAfterInitialHandshakeFailure(t *testing.T) {
 	defer server.Close()
 
 	o := newTestOrchestrator()
-	o.client = panel.NewClient(config.PanelConfig{URL: server.URL, Token: "t", MachineID: 16})
+	o.client = newXboardMachineControlPlane(panel.NewClient(config.PanelConfig{URL: server.URL, Token: "t", MachineID: 16}))
 	push := &machineNodePush{nodeID: 3, wsLookup: o.currentWS}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -298,4 +299,37 @@ func TestMachineWSDiscoveryRecoversAfterInitialHandshakeFailure(t *testing.T) {
 	if got := handshakes.Load(); got != 2 {
 		t.Fatalf("unexpected handshake count %d, want 2 (skip duplicate WS clients)", got)
 	}
+}
+
+// S6 adapter contract: a machine socket exposes only the two outbound
+// operations, while the Xboard adapter retains the original wire event names.
+type recordingMachineSocket struct {
+ connected bool
+ devices [][]byte
+ results [][]byte
+}
+func (s *recordingMachineSocket) Run(ctx context.Context) { <-ctx.Done() }
+func (s *recordingMachineSocket) IsConnected() bool { return s.connected }
+func (s *recordingMachineSocket) SendDeviceReport(data json.RawMessage) { s.devices = append(s.devices, append([]byte(nil), data...)) }
+func (s *recordingMachineSocket) SendOpsResult(data json.RawMessage) { s.results = append(s.results, append([]byte(nil), data...)) }
+func TestMachineNodePushUsesSocketContract(t *testing.T) {
+ sock := &recordingMachineSocket{connected: true}
+ push := &machineNodePush{nodeID: 42, wsLookup: func() machineSocket { return sock }}
+ if !push.IsConnected() { t.Fatal("expected connected socket") }
+ push.SendDeviceReport(map[int][]string{7: {"192.0.2.1"}})
+ push.SendOpsResult(controlplane.OpsResult{RequestID:"req-1", Operation:"restart", OK:false, ErrorCode:"ops_queue_full"})
+ if len(sock.devices) != 1 || len(sock.results) != 1 { t.Fatalf("outbound count: devices=%d results=%d", len(sock.devices),len(sock.results)) }
+ var device struct { NodeID int `json:"node_id"`; Devices map[string][]string `json:"devices"` }
+ if err := json.Unmarshal(sock.devices[0], &device); err != nil { t.Fatal(err) }
+ if device.NodeID != 42 || len(device.Devices["7"]) != 1 { t.Fatalf("device payload: %+v",device) }
+ var result struct { NodeID int `json:"node_id"`; RequestID string `json:"request_id"`; ErrorCode string `json:"error_code"` }
+ if err := json.Unmarshal(sock.results[0], &result); err != nil { t.Fatal(err) }
+ if result.NodeID != 42 || result.RequestID != "req-1" || result.ErrorCode != "ops_queue_full" { t.Fatalf("ops payload: %+v",result) }
+}
+
+func TestMachineEventAdapterNormalizesControlEvents(t *testing.T) {
+ syncEvent := translateMachineEvent(panel.WSEvent{Type:panel.WSEventSyncNodes},config.KernelConfig{})
+ if syncEvent.Kind != machineEventSyncNodes { t.Fatalf("sync event kind=%s",syncEvent.Kind) }
+ runtimeEvent := translateMachineEvent(panel.WSEvent{Type:panel.WSEventOpsMachineRuntimeUpdate,MachineRuntimeUpdate:&panel.MachineRuntimeUpdateRequest{RequestID:"update-1",Target:"latest"}},config.KernelConfig{})
+ if runtimeEvent.Kind != machineEventRuntimeUpdate || runtimeEvent.RuntimeUpdate == nil || runtimeEvent.RuntimeUpdate.RequestID != "update-1" { t.Fatalf("runtime event=%+v",runtimeEvent) }
 }
