@@ -30,6 +30,13 @@ func NewMachineTXBoardControlPlane(c *txboard.Client,k config.KernelConfig,push 
  return &TXBoardControlPlane{client:c,kernel:k,machine:true,sharedPush:push,register:register}
 }
 var _ ControlPlane=(*TXBoardControlPlane)(nil)
+// AuditTarget activates the existing sing-box reporter using native Bearer
+// credentials. In Machine mode the per-node client retains the Machine ID.
+func (p *TXBoardControlPlane) AuditTarget() (AuditTarget, bool) {
+ if p==nil || p.client==nil || p.client.NodeID()<=0 || p.client.Token()=="" {return AuditTarget{},false}
+ return AuditTarget{Protocol:"txboard",BaseURL:p.client.BaseURL(),Token:p.client.Token(),NodeID:p.client.NodeID(),MachineID:p.client.MachineID()},true
+}
+
 func (p *TXBoardControlPlane) SupportsPolling()bool{return true}
 func (p *TXBoardControlPlane) SupportsDiscovery()bool{return !p.machine}
 func (p *TXBoardControlPlane) SupportsReporting()bool{return true}
