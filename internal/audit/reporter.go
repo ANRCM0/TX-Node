@@ -315,7 +315,7 @@ func (r *Reporter) refreshRules() {
 		nlog.Core().Warn("audit: refresh rules failed", "error", err)
 		return
 	}
-	for i := range body.Data {
+	for i := range rules {
 		var vals []string
 		for _, v := range strings.FieldsFunc(rules[i].MatchValue, func(c rune) bool {
 			return c == '\n' || c == '\r' || c == ','
@@ -335,7 +335,7 @@ func (r *Reporter) refreshRules() {
 	// dropped by Observe(). Surface it instead of failing silently — this is
 	// exactly the state a freshly-enabled node lands in, and it is
 	// indistinguishable from "working fine" on the panel (no rows appear).
-	if len(body.Data) == 0 && !r.cfg.ReportAll {
+	if len(rules) == 0 && !r.cfg.ReportAll {
 		r.warnNoRules()
 	}
 }
