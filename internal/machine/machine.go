@@ -48,7 +48,7 @@ type Orchestrator struct {
 	// The shared transport may be installed after startup when the initial
 	// handshake fails or the panel enables WS later. Node pushes look it up live.
 	wsMu     sync.RWMutex
-	ws       *panel.WSClient
+	ws       machineSocket
 	wsCancel context.CancelFunc
 
 	// Discovery may be triggered by both the ticker and an incoming WS event.
@@ -466,7 +466,7 @@ func (o *Orchestrator) reportMachineStatus() {
 
 // ─── WS mux ─────────────────────────────────────────────────────────────
 
-func (o *Orchestrator) currentWS() *panel.WSClient {
+func (o *Orchestrator) currentWS() machineSocket {
 	o.wsMu.RLock()
 	defer o.wsMu.RUnlock()
 	return o.ws
@@ -494,7 +494,7 @@ func (o *Orchestrator) tryStartWS(ctx context.Context) {
 		MachineID:        o.cfg.Machine.MachineID,
 	}
 
-	ws := panel.NewWSClient(
+	ws := newXboardMachineSocket(
 		hs.WebSocket.WSURL,
 		o.cfg.Machine.Token,
 		0, // no single node_id
@@ -644,10 +644,10 @@ func (o *Orchestrator) applyIntervals(bc machineIntervals) {
 // connectivity status and send capabilities.
 type machineNodePush struct {
 	nodeID int
-	wsLookup func() *panel.WSClient
+	wsLookup func() machineSocket
 }
 
-func (p *machineNodePush) currentWS() *panel.WSClient {
+func (p *machineNodePush) currentWS() machineSocket {
 	if p.wsLookup == nil {
 		return nil
 	}
@@ -679,7 +679,7 @@ func (p *machineNodePush) SendDeviceReport(devices map[int][]string) {
 	}
 	payload["devices"] = strDevices
 	data, _ := json.Marshal(payload)
-	ws.SendRaw(panel.WSEventReportDevices, data)
+	ws.SendDeviceReport(data)
 }
 
 func (p *machineNodePush) SendOpsResult(result controlplane.OpsResult) {
@@ -707,5 +707,5 @@ func (p *machineNodePush) SendOpsResult(result controlplane.OpsResult) {
 		nlog.Core().Warn("machine: cannot encode ops result", "error", err)
 		return
 	}
-	ws.SendRaw(panel.WSEventOpsResult, data)
+	ws.SendOpsResult(data)
 }

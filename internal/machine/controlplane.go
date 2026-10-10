@@ -1,6 +1,8 @@
 package machine
 
 import (
+ "context"
+ "encoding/json"
  "github.com/ANRCM0/TX-Node/internal/panel"
  "github.com/ANRCM0/TX-Node/internal/config"
  "github.com/ANRCM0/TX-Node/internal/controlplane"
@@ -80,3 +82,18 @@ func translateMachineEvent(raw panel.WSEvent, kernel config.KernelConfig) machin
  }
  return event
 }
+
+// machineSocket is the shared push transport boundary. The orchestrator
+// only needs lifecycle, connectivity and two outbound message types.
+type machineSocket interface {
+ Run(context.Context)
+ IsConnected() bool
+ SendDeviceReport(json.RawMessage)
+ SendOpsResult(json.RawMessage)
+}
+type xboardMachineSocket struct { *panel.WSClient }
+func newXboardMachineSocket(url, token string, nodeID int, cfg panel.WSClientConfig, onEvent func(panel.WSEvent), onStatus func(panel.WSStatusChange), onMetrics func() map[string]interface{}) machineSocket {
+ return &xboardMachineSocket{WSClient: panel.NewWSClient(url, token, nodeID, cfg, onEvent, onStatus, onMetrics)}
+}
+func (s *xboardMachineSocket) SendDeviceReport(data json.RawMessage) { s.SendRaw(panel.WSEventReportDevices, data) }
+func (s *xboardMachineSocket) SendOpsResult(data json.RawMessage) { s.SendRaw(panel.WSEventOpsResult, data) }
