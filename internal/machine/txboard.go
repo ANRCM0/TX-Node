@@ -2,7 +2,6 @@ package machine
 
 import (
  "encoding/json"
- "fmt"
 
  "github.com/ANRCM0/TX-Node/internal/config"
  "github.com/ANRCM0/TX-Node/internal/controlplane"
@@ -81,4 +80,3 @@ func (s *txboardMachineSocket)SendOpsResult(data json.RawMessage){
 var _ machineSocket=(*txboardMachineSocket)(nil)
 var _ machineControlPlane=(*txboardMachineControlPlane)(nil)
 var _ machineNodeClient=(*txboardMachineNodeClient)(nil)
-var _ = fmt.Sprintf
