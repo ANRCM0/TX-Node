@@ -48,13 +48,24 @@ func (m *Manager) requestPath() string    { return filepath.Join(m.dir, "request
 func (m *Manager) statusPath() string     { return filepath.Join(m.dir, "status.env") }
 
 func (m *Manager) Available() bool {
+	return m.supportsTarget("latest")
+}
+
+// Older Installer capability files advertise only latest; accepting dev requires
+// an explicit new bridge advertisement, not just a legacy updater marker.
+func (m *Manager) supportsTarget(target string) bool {
 	values, err := parseEnvFile(m.capabilityPath(), 8, 512)
-	if err != nil {
+	if err != nil || values["schema"] != "1" || values["updater_available"] != "true" {
 		return false
 	}
-	return values["schema"] == "1" &&
-		values["updater_available"] == "true" &&
-		values["target"] == "latest,dev" || values["target"] == "latest"
+	advertised := values["target"]
+	if advertised == "latest" {
+		return target == "latest"
+	}
+	if advertised == "latest,dev" {
+		return target == "latest" || target == "dev"
+	}
+	return false
 }
 
 func ValidateRequest(requestID, target string) error {
@@ -71,8 +82,8 @@ func (m *Manager) Request(requestID, target string) error {
 	if err := ValidateRequest(requestID, target); err != nil {
 		return err
 	}
-	if !m.Available() {
-		return errors.New("runtime updater unavailable")
+	if !m.supportsTarget(target) {
+		return errors.New("runtime updater unavailable for target")
 	}
 
 	if err := os.MkdirAll(m.dir, 0o700); err != nil {
