@@ -9,6 +9,10 @@ import (
  "github.com/ANRCM0/TX-Node/internal/controlplane"
 )
 
+type machineNodeConfig struct { Network string }
+type machineRuntimeUpdateStatus struct { RequestID, Target, Status string; UpdatedAt int64; Message string }
+type machineRuntimeStatus struct { Version, BuildTime, Deployment string; UpdaterAvailable bool; Update *machineRuntimeUpdateStatus }
+
 type machineHandshake struct { Enabled bool; URL string }
 type machineNode struct { ID int; Type string; Name string }
 type machineIntervals struct { PullInterval int; PushInterval int }
@@ -21,19 +25,23 @@ type machineControlPlane interface {
  Handshake() (*machineHandshake, error)
  NewMachineSocket(string, string, int, config.WSConfig, config.KernelConfig, func(machineEvent), func(bool)) machineSocket
  ForNode(int) machineNodeClient
- ReportMachineStatus(float64, [2]uint64, [2]uint64, [2]uint64, float64, float64, *panel.MachineRuntimeStatus) error
+ ReportMachineStatus(float64, [2]uint64, [2]uint64, [2]uint64, float64, float64, *machineRuntimeStatus) error
 }
 
 // machineNodeClient owns node REST snapshots and constructs the per-node
 // control-plane adapter. The orchestrator never handles raw node REST clients.
 type machineNodeClient interface {
- GetConfig() (*panel.NodeConfig, error)
+ GetConfig() (*machineNodeConfig, error)
  ResetConfigETag()
  ControlPlane(config.KernelConfig, controlplane.PushClient, func(chan<- controlplane.StatusChange) *controlplane.NodeMailbox) controlplane.ControlPlane
 }
 
 type xboardMachineNodeClient struct { client *panel.Client }
-func (x *xboardMachineNodeClient) GetConfig() (*panel.NodeConfig, error) { return x.client.GetConfig() }
+func (x *xboardMachineNodeClient) GetConfig() (*machineNodeConfig, error) {
+ cfg, err := x.client.GetConfig()
+ if err != nil || cfg == nil { return nil, err }
+ return &machineNodeConfig{Network: cfg.Network}, nil
+}
 func (x *xboardMachineNodeClient) ResetConfigETag() { x.client.ResetConfigETag() }
 func (x *xboardMachineNodeClient) ControlPlane(k config.KernelConfig, push controlplane.PushClient, register func(chan<- controlplane.StatusChange) *controlplane.NodeMailbox) controlplane.ControlPlane {
  return controlplane.NewMachineXboardControlPlane(x.client, k, push, register)
@@ -69,8 +77,13 @@ func (x *xboardMachineControlPlane) NewMachineSocket(url, token string, machineI
   func(status panel.WSStatusChange) { onStatus(status.Connected) }, nil)
 }
 func (x *xboardMachineControlPlane) ForNode(id int) machineNodeClient { return &xboardMachineNodeClient{client: x.client.ForNode(id)} }
-func (x *xboardMachineControlPlane) ReportMachineStatus(cpu float64, mem, swap, disk [2]uint64, netIn, netOut float64, status *panel.MachineRuntimeStatus) error {
- return x.client.ReportMachineStatus(cpu, mem, swap, disk, netIn, netOut, status)
+func (x *xboardMachineControlPlane) ReportMachineStatus(cpu float64, mem, swap, disk [2]uint64, netIn, netOut float64, status *machineRuntimeStatus) error {
+ var wire *panel.MachineRuntimeStatus
+ if status != nil {
+  wire = &panel.MachineRuntimeStatus{Version: status.Version, BuildTime: status.BuildTime, Deployment: status.Deployment, UpdaterAvailable: status.UpdaterAvailable}
+  if status.Update != nil { wire.Update = &panel.MachineRuntimeUpdateStatus{RequestID: status.Update.RequestID, Target: status.Update.Target, Status: status.Update.Status, UpdatedAt: status.Update.UpdatedAt, Message: status.Update.Message} }
+ }
+ return x.client.ReportMachineStatus(cpu, mem, swap, disk, netIn, netOut, wire)
 }
 
 // machineEvent is the protocol-independent envelope delivered to the orchestrator.

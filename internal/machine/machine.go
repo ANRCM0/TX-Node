@@ -15,7 +15,6 @@ import (
 	"github.com/ANRCM0/TX-Node/internal/model"
 	"github.com/ANRCM0/TX-Node/internal/monitor"
 	"github.com/ANRCM0/TX-Node/internal/nlog"
-	"github.com/ANRCM0/TX-Node/internal/panel"
 	"github.com/ANRCM0/TX-Node/internal/runtimeupdate"
 	"github.com/ANRCM0/TX-Node/internal/service"
 )
@@ -54,7 +53,7 @@ type Orchestrator struct {
 	// Discovery may be triggered by both the ticker and an incoming WS event.
 	rediscoverMu sync.Mutex
 
-	// runCtx is stored from Run() so that onWSEvent can trigger rediscover
+	// runCtx is stored from Run() so that onMachineEvent can trigger rediscover
 	// for sync.nodes events without blocking the main loop.
 	runCtx context.Context
 
@@ -124,7 +123,7 @@ func New(cfg *config.Config) *Orchestrator {
 	}
 	return &Orchestrator{
 		cfg:       cfg,
-		client:    newXboardMachineControlPlane(panel.NewClient(panelCfg)),
+		client:    mustMachineControlPlane(cfg.Panel.Provider, panelCfg),
 		nodes:     make(map[int]*nodeHandle),
 		mailboxes: make(map[int]*controlplane.NodeMailbox),
 		statuses:  make(map[int]chan<- controlplane.StatusChange),
@@ -431,7 +430,7 @@ func (o *Orchestrator) rediscover(ctx context.Context) {
 
 func (o *Orchestrator) reportMachineStatus() {
 	s := monitor.Collect()
-	runtimeStatus := &panel.MachineRuntimeStatus{
+	runtimeStatus := &machineRuntimeStatus{
 		Version:    buildinfo.Version,
 		BuildTime:  buildinfo.BuildTime,
 		Deployment: "unknown",
@@ -442,7 +441,7 @@ func (o *Orchestrator) reportMachineStatus() {
 			runtimeStatus.Deployment = "docker"
 		}
 		if last := o.runtimeUpdater.LastStatus(); last != nil {
-			runtimeStatus.Update = &panel.MachineRuntimeUpdateStatus{
+			runtimeStatus.Update = &machineRuntimeUpdateStatus{
 				RequestID: last.RequestID,
 				Target:    last.Target,
 				Status:    last.Status,
@@ -499,12 +498,6 @@ func (o *Orchestrator) tryStartWS(ctx context.Context) {
 	go ws.Run(wsCtx)
 
 	nlog.Core().Info("machine: ws mux started")
-}
-
-// onWSEvent routes a WS event to the correct node's channel.
-// sync.nodes is a machine-level event that triggers immediate rediscovery.
-func (o *Orchestrator) onWSEvent(event panel.WSEvent) {
- o.onMachineEvent(translateMachineEvent(event, o.cfg.Kernel))
 }
 
 func (o *Orchestrator) onMachineEvent(event machineEvent) {
@@ -572,11 +565,6 @@ func (o *Orchestrator) onMachineEvent(event machineEvent) {
 			Message: "node operation queue is full; retry later",
 		})
 	}
-}
-
-// onWSStatus broadcasts WS connectivity changes to all registered nodes.
-func (o *Orchestrator) onWSStatus(status panel.WSStatusChange) {
- o.onMachineStatus(status.Connected)
 }
 
 func (o *Orchestrator) onMachineStatus(connected bool) {

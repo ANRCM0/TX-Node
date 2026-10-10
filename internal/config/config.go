@@ -98,6 +98,7 @@ type RuntimeConfig struct {
 }
 
 type PanelConfig struct {
+	Provider string `yaml:"provider,omitempty"` // xboard (default); txboard reserved
 	URL       string `yaml:"url"`
 	Token     string `yaml:"token"`
 	TokenEnv  string `yaml:"token_env,omitempty"`
@@ -476,6 +477,7 @@ func (c *Config) resolveEnvRefs() {
 // Fields that must be unique per instance (config_dir, cert_dir, instance_id)
 // are intentionally excluded.
 func (c *Config) inheritFrom(parent *Config) {
+	if c.Panel.Provider == "" { c.Panel.Provider = parent.Panel.Provider }
 	// Log
 	if c.Log.Level == "" {
 		c.Log.Level = parent.Log.Level
@@ -713,6 +715,9 @@ func normalizeBaseURL(raw string) (string, string, error) {
 }
 
 func (c *Config) validate() error {
+	if c.Panel.Provider != "" && c.Panel.Provider != "xboard" {
+		return fmt.Errorf("panel.provider %q is not supported; available: xboard", c.Panel.Provider)
+	}
 	if c.IsStandalone() {
 		if err := c.validateStandalone(); err != nil {
 			return err
