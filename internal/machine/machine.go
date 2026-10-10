@@ -185,7 +185,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 
 // ─── Node lifecycle ──────────────────────────────────────────────────────
 
-func (o *Orchestrator) startNode(ctx context.Context, mn panel.MachineNode) {
+func (o *Orchestrator) startNode(ctx context.Context, mn machineNode) {
 	o.mu.Lock()
 	if _, exists := o.nodes[mn.ID]; exists {
 		o.mu.Unlock()
@@ -387,7 +387,7 @@ func (o *Orchestrator) rediscover(ctx context.Context) {
 
 	o.setWanted(len(nodesResp.Nodes))
 
-	wanted := make(map[int]panel.MachineNode, len(nodesResp.Nodes))
+	wanted := make(map[int]machineNode, len(nodesResp.Nodes))
 	for _, n := range nodesResp.Nodes {
 		wanted[n.ID] = n
 	}
@@ -621,7 +621,7 @@ func (o *Orchestrator) unregisterNode(nodeID int) {
 	o.eventsMu.Unlock()
 }
 
-func (o *Orchestrator) applyIntervals(bc panel.MachineBaseConfig) {
+func (o *Orchestrator) applyIntervals(bc machineIntervals) {
 	o.pullInterval = time.Duration(bc.PullInterval) * time.Second
 	if o.pullInterval < 30*time.Second {
 		o.pullInterval = 60 * time.Second

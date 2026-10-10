@@ -6,10 +6,14 @@ import (
  "github.com/ANRCM0/TX-Node/internal/controlplane"
 )
 
+type machineNode struct { ID int; Type string; Name string }
+type machineIntervals struct { PullInterval int; PushInterval int }
+type machineDiscovery struct { Nodes []machineNode; BaseConfig machineIntervals }
+
 // machineControlPlane isolates machine transport operations from orchestration.
 // The Xboard adapter preserves the existing wire format during migration.
 type machineControlPlane interface {
- GetMachineNodes() (*panel.MachineNodesResponse, error)
+ GetMachineNodes() (*machineDiscovery, error)
  Handshake() (*panel.HandshakeResponse, error)
  ForNode(int) machineNodeClient
  ReportMachineStatus(float64, [2]uint64, [2]uint64, [2]uint64, float64, float64, *panel.MachineRuntimeStatus) error
@@ -35,7 +39,13 @@ type xboardMachineControlPlane struct { client *panel.Client }
 func newXboardMachineControlPlane(client *panel.Client) machineControlPlane {
  return &xboardMachineControlPlane{client: client}
 }
-func (x *xboardMachineControlPlane) GetMachineNodes() (*panel.MachineNodesResponse, error) { return x.client.GetMachineNodes() }
+func (x *xboardMachineControlPlane) GetMachineNodes() (*machineDiscovery, error) {
+ response, err := x.client.GetMachineNodes()
+ if err != nil { return nil, err }
+ result := &machineDiscovery{BaseConfig: machineIntervals{PullInterval: response.BaseConfig.PullInterval, PushInterval: response.BaseConfig.PushInterval}}
+ for _, n := range response.Nodes { result.Nodes = append(result.Nodes, machineNode{ID: n.ID, Type: n.Type, Name: n.Name}) }
+ return result, nil
+}
 func (x *xboardMachineControlPlane) Handshake() (*panel.HandshakeResponse, error) { return x.client.Handshake() }
 func (x *xboardMachineControlPlane) ForNode(id int) machineNodeClient { return &xboardMachineNodeClient{client: x.client.ForNode(id)} }
 func (x *xboardMachineControlPlane) ReportMachineStatus(cpu float64, mem, swap, disk [2]uint64, netIn, netOut float64, status *panel.MachineRuntimeStatus) error {
