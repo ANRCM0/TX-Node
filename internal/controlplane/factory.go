@@ -11,7 +11,7 @@ type Provider string
 const (
 	ProviderLocal  Provider = "local"
 	ProviderXboard Provider = "xboard"
-	ProviderTXBoard Provider = "txboard" // reserved until the native adapter exists
+	ProviderTXBoard Provider = "txboard"
 )
 
 // normalized retains compatibility with existing configurations that omit provider.
@@ -40,6 +40,8 @@ func NewForConfigChecked(cfg *config.Config) (ControlPlane, error) {
 		return NewLocalControlPlane(cfg), nil
 	case ProviderXboard:
 		return NewXboardControlPlane(cfg.Panel, cfg.WS, cfg.Kernel), nil
+	case ProviderTXBoard:
+		return NewTXBoardControlPlane(cfg.Panel, cfg.WS, cfg.Kernel), nil
 	default:
 		// Unsupported providers are rejected during config validation. Never
 		// silently connect a different provider using Xboard credentials.

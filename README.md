@@ -10,7 +10,7 @@ TX-Node 支持 `sing-box` / `xray-core` 双内核。安装、升级、回滚与�
 
 ## Control Plane Provider 支持状态
 
-普通节点与 Machine Mode 均通过 `panel.provider` 选择远程控制平面；省略该字段或设置为 `xboard` 时使用现有 Xboard 兼容协议。`txboard` 当前仍是预留值，配置校验会拒绝，**尚未实现 TXBoard 原生适配**。Standalone 模式使用本地控制平面。
+普通节点与 Machine Mode 均通过 `panel.provider` 选择远程控制平面；省略该字段或设置为 `xboard` 时使用现有 Xboard 兼容协议。`txboard` 启用 TXBoard 原生 `/txapi/node/v1` HTTP/WSS 协议（Node 与 Machine Mode）；原生 WebSocket 默认由 TXBoard 服务端关闭，不影响 HTTP 轮询。上线前仍需跨仓库真实环境联调。Standalone 模式使用本地控制平面。
 
 Provider 的构造错误处理、配置继承及 S8 原生协议审查清单见 [`docs/control-plane-providers.md`](docs/control-plane-providers.md)。
 
