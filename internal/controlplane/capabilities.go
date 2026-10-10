@@ -4,6 +4,7 @@ package controlplane
 // audit reporter. It is intentionally protocol-neutral so core service code
 // does not need to understand Xboard panel configuration.
 type AuditTarget struct {
+	Protocol  string
 	BaseURL   string
 	Token     string
 	NodeID    int
@@ -34,6 +35,7 @@ func auditTargetFromPanelIdentity(url, token string, nodeID int, nodeType string
 		return AuditTarget{}, false
 	}
 	return AuditTarget{
+		Protocol:  "xboard",
 		BaseURL:   url,
 		Token:     token,
 		NodeID:    nodeID,
