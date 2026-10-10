@@ -137,7 +137,7 @@ func TestStartNodeSkipsDuringBackoff(t *testing.T) {
 	o := newTestOrchestrator()
 	o.failures[7] = &nodeFailure{count: 1, nextRetry: time.Now().Add(time.Minute)}
 
-	o.startNode(context.Background(), panel.MachineNode{ID: 7})
+	o.startNode(context.Background(), machineNode{ID: 7})
 
 	o.mu.Lock()
 	_, started := o.nodes[7]
