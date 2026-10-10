@@ -11,7 +11,7 @@ import (
 
 type machineNodeConfig struct { Network string }
 type machineRuntimeUpdateStatus struct { RequestID, Target, Status string; UpdatedAt int64; Message string }
-type machineRuntimeStatus struct { Version, BuildTime, Deployment string; UpdaterAvailable bool; Update *machineRuntimeUpdateStatus }
+type machineRuntimeStatus struct { Version, BuildTime, Deployment string; UpdaterAvailable bool; UpdateTargets []string; Update *machineRuntimeUpdateStatus }
 
 type machineHandshake struct { Enabled bool; URL string }
 type machineNode struct { ID int; Type string; Name string }
