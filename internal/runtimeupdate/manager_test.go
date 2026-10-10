@@ -26,6 +26,8 @@ func TestManagerAvailabilityAndRequest(t *testing.T) {
 		t.Fatal("expected valid capability marker")
 	}
 
+	if err := m.Request("mup_dev-old-bridge", "dev"); err == nil { t.Fatal("dev must fail for legacy latest-only bridge") }
+
 	if err := m.Request("mup_test-01", "latest"); err != nil {
 		t.Fatalf("Request: %v", err)
 	}
