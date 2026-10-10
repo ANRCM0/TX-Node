@@ -31,6 +31,9 @@ RUN mkdir -p /etc/txnode /etc/xboard-node
 WORKDIR /etc/txnode
 
 # Config can be provided via file mount OR environment variables.
+# Environment-variable bootstrap retains Xboard-compatible defaults. To use
+# TXBoard native node/v1 or Machine mode, mount a YAML config with
+# panel.provider: txboard (and machine.machine_id/token when applicable).
 # Env var mode (no config file needed):
 #   docker run -d --network=host \
 #     -e apiHost=https://panel.example.com \
