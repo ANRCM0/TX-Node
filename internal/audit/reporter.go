@@ -1,9 +1,8 @@
 // Package audit implements the tx-node embedded access-audit reporter.
 //
 // The optional reporter observes sing-box kernel connections, matches targets
-// against legacy Xboard-compatible AccessAudit plugin rules, and reports
-// matched events using the Xboard node authentication (server token + node_id
-// or machine token). Native TXBoard does not support this legacy plugin API.
+// using one collection/matching engine, with Xboard legacy-plugin and
+// TXBoard native transports selected by the control-plane provider.
 // The reporter does not introduce a separate credential.
 //
 // Disabled by default: without an [audit] section in config.yml, the reporter
@@ -11,15 +10,12 @@
 package audit
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -74,10 +70,10 @@ type Config struct {
 	QueueCap int `yaml:"queue_cap"`
 }
 
-// PanelAuth carries Xboard-compatible panel identity for the optional legacy
-// audit plugin endpoints. Do not reuse this query/body authentication for the
-// native TXBoard node/v1 protocol.
+// PanelAuth carries the provider-specific identity; the selected wire adapter
+// determines header-based native authentication or legacy plugin auth.
 type PanelAuth struct {
+	Protocol  string // xboard (default) or txboard
 	BaseURL   string
 	Token     string
 	NodeID    int
@@ -96,6 +92,7 @@ type rule struct {
 
 // Event is one audit hit. JSON shape matches the panel report API.
 type Event struct {
+	ID       string `json:"-"` // stable across retries; emitted only as native event_id
 	UserID   int    `json:"user_id"`
 	Target   string `json:"target"`
 	TargetIP string `json:"target_ip,omitempty"`
@@ -185,10 +182,12 @@ func New(cfg Config, auth PanelAuth) *Reporter {
 		return r
 	}
 	cfg.BatchMax, cfg.QueueCap = resolveSizes(cfg)
-	if cfg.BatchMax > maxEventsPerBatch {
+	maxBatch := maxEventsPerBatch
+	if auth.Protocol == "txboard" && maxBatch > 200 { maxBatch = 200 }
+	if cfg.BatchMax > maxBatch {
 		nlog.Core().Warn("audit: batch_max exceeds panel limit, clamped",
-			"configured", cfg.BatchMax, "clamped_to", maxEventsPerBatch)
-		cfg.BatchMax = maxEventsPerBatch
+			"configured", cfg.BatchMax, "clamped_to", maxBatch)
+		cfg.BatchMax = maxBatch
 	}
 	if cfg.FlushInterval <= 0 {
 		cfg.FlushInterval = 15
@@ -198,7 +197,7 @@ func New(cfg Config, auth PanelAuth) *Reporter {
 	}
 	r.cfg = cfg
 	r.auth.BaseURL = strings.TrimRight(auth.BaseURL, "/")
-	r.http = &http.Client{Timeout: 15 * time.Second}
+	r.http = &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {return http.ErrUseLastResponse}}
 
 	go r.loop()
 	nlog.Core().Info("audit reporter enabled",
@@ -264,7 +263,13 @@ func (r *Reporter) ObserveWithTargetIP(userID int, target, targetIP, sourceIP st
 	}
 	r.queueMu.Lock()
 	if len(r.queue) < r.cfg.QueueCap {
-		r.queue = append(r.queue, Event{UserID: userID, Target: target, TargetIP: targetIP, SourceIP: sourceIP, Matched: matched})
+		var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		r.queueMu.Unlock()
+		r.recordDrop(1, "failed generating audit observation ID")
+		return
+	}
+	r.queue = append(r.queue, Event{ID: hex.EncodeToString(id[:]), UserID: userID, Target: target, TargetIP: targetIP, SourceIP: sourceIP, Matched: matched})
 		r.queueMu.Unlock()
 		return
 	}
@@ -300,75 +305,31 @@ func (r *Reporter) loop() {
 	}
 }
 
-// authQuery replicates panel.Client.authQuery for GET requests.
-func (r *Reporter) authQuery() url.Values {
-	q := url.Values{}
-	q.Set("token", r.auth.Token)
-	if r.auth.MachineID > 0 {
-		q.Set("machine_id", strconv.Itoa(r.auth.MachineID))
-	}
-	if r.auth.NodeID > 0 {
-		q.Set("node_id", strconv.Itoa(r.auth.NodeID))
-	}
-	if r.auth.NodeType != "" && r.auth.MachineID == 0 {
-		q.Set("node_type", r.auth.NodeType)
-	}
-	return q
-}
-
-// authPayload replicates panel.Client.injectAuth for POST requests.
-func (r *Reporter) authPayload(m map[string]interface{}) {
-	m["token"] = r.auth.Token
-	if r.auth.MachineID > 0 {
-		m["machine_id"] = r.auth.MachineID
-	}
-	if r.auth.NodeID > 0 {
-		m["node_id"] = r.auth.NodeID
-	}
-	if r.auth.NodeType != "" && r.auth.MachineID == 0 {
-		m["node_type"] = r.auth.NodeType
-	}
-}
-
-// refreshRules pulls enabled rules from the panel.
+// refreshRules fetches the active rules through the selected wire adapter.
+// A failed refresh keeps the last validated rule snapshot, never overwrites it.
 func (r *Reporter) refreshRules() {
-	req, err := http.NewRequest(http.MethodGet,
-		r.auth.BaseURL+rulesPath+"?"+r.authQuery().Encode(), nil)
-	if err != nil {
-		return
-	}
-	resp, err := r.http.Do(req)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	rules, err := r.adapter().FetchRules(ctx)
 	if err != nil {
 		nlog.Core().Warn("audit: refresh rules failed", "error", err)
 		return
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		nlog.Core().Warn("audit: refresh rules status", "status", resp.StatusCode)
-		return
-	}
-	var body struct {
-		Data []rule `json:"data"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
-		nlog.Core().Warn("audit: refresh rules decode failed", "error", err)
-		return
-	}
 	for i := range body.Data {
 		var vals []string
-		for _, v := range strings.FieldsFunc(body.Data[i].MatchValue, func(c rune) bool {
+		for _, v := range strings.FieldsFunc(rules[i].MatchValue, func(c rune) bool {
 			return c == '\n' || c == '\r' || c == ','
 		}) {
 			if v = strings.ToLower(strings.TrimSpace(v)); v != "" {
 				vals = append(vals, v)
 			}
 		}
-		body.Data[i].values = vals
+		rules[i].values = vals
 	}
 	// Publish an immutable snapshot; match() reads it lock-free.
-	snapshot := body.Data
+	snapshot := rules
 	r.rules.Store(&snapshot)
-	nlog.Core().Debug("audit: rules refreshed", "count", len(body.Data))
+	nlog.Core().Debug("audit: rules refreshed", "count", len(rules))
 
 	// Rules loaded but empty while report_all=false: every connection will be
 	// dropped by Observe(). Surface it instead of failing silently — this is
@@ -492,36 +453,14 @@ func (r *Reporter) flushOnce() bool {
 	r.queue = r.queue[len(batch):]
 	r.queueMu.Unlock()
 
-	payload := map[string]interface{}{"events": batch}
-	r.authPayload(payload)
-	body, _ := json.Marshal(payload)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		r.auth.BaseURL+reportPath, bytes.NewReader(body))
-	if err != nil {
-		r.requeue(batch)
-		return false
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := r.http.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		status := 0
-		if resp != nil {
-			status = resp.StatusCode
-			io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-			resp.Body.Close()
-		}
+	if err := r.adapter().Send(ctx, batch); err != nil {
 		r.failed.Add(1)
-		nlog.Core().Warn("audit: report failed, requeue",
-			"error", err, "status", status, "events", len(batch))
+		nlog.Core().Warn("audit: report failed, requeue", "error", err, "events", len(batch))
 		r.requeue(batch)
 		return false
 	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
 	r.reported.Add(uint64(len(batch)))
 	nlog.Core().Debug("audit: reported", "events", len(batch))
 	return true
